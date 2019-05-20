@@ -1,0 +1,9 @@
+[service]
+worker_threads = 10
+ca_cert_path = "test/UmpyreAuth.crt"
+tls_cert_path = "test/Switchroom.crt"
+tls_key_path = "test/Switchroom.key"
+bind_to_address = "127.0.0.1:10011"
+
+[metrics]
+bind_to_address = "127.0.0.1:5002"
