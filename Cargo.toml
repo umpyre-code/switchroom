@@ -1,11 +1,11 @@
 cargo-features = ["default-run"]
 
 [package]
-name = "rolodex"
+name = "switchroom"
 version = "0.1.0"
 authors = ["Brenden Matthews <brenden@brndn.io>"]
 
-default-run = "rolodex"
+default-run = "switchroom"
 
 [dependencies]
 env_logger = { version = "0.5", default-features = false }
