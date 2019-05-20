@@ -3,6 +3,7 @@ use switchroom_grpc::proto;
 
 pub trait Hashable {
     fn hashed(&self) -> Self;
+    fn verify(&self) -> Result<(), ()>;
 }
 
 impl Hashable for proto::Message {
@@ -20,6 +21,24 @@ impl Hashable for proto::Message {
         // put hash into message
         hash_message.hash = hash;
         hash_message
+    }
+
+    fn verify(&self) -> Result<(), ()> {
+        // copy fields from incoming message into new message, and update timestamp
+        let hash_message = proto::Message {
+            from: self.from.clone(),
+            to: self.to.clone(),
+            body: self.body.clone(),
+            received_at: self.received_at.clone(),
+            hash: "".into(),
+        };
+        // compute the hash
+        let hash = b2b_hash(&hash_message, 16);
+        if hash == self.hash {
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }
 
@@ -82,5 +101,28 @@ mod tests {
         assert_eq!(new_message.from, "from id");
         assert_eq!(new_message.to, "to id");
         assert_eq!(new_message.body, "yoyoyoyo");
+    }
+
+    #[test]
+    fn test_verify() {
+        let message = proto::Message {
+            hash: "".into(),
+            from: "from id".into(),
+            to: "to id".into(),
+            received_at: Some(proto::Timestamp {
+                seconds: 1,
+                nanos: 2,
+            }),
+            body: "yoyoyoyo".into(),
+        };
+        let new_message = message.hashed();
+        assert_eq!(new_message.from, "from id");
+        assert_eq!(new_message.to, "to id");
+        assert_eq!(new_message.body, "yoyoyoyo");
+        let verified = new_message.verify();
+        assert_eq!(verified.is_ok(), true);
+
+        let not_verified = message.verify();
+        assert_eq!(not_verified.is_err(), true);
     }
 }

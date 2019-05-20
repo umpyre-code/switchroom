@@ -2,6 +2,7 @@ extern crate env_logger;
 extern crate futures;
 #[macro_use]
 extern crate log;
+extern crate chrono;
 extern crate tokio;
 extern crate tower_hyper;
 #[macro_use]
@@ -11,6 +12,7 @@ extern crate serde_derive;
 #[macro_use]
 extern crate lazy_static;
 extern crate data_encoding;
+extern crate foundationdb;
 extern crate instrumented;
 extern crate prost;
 extern crate sodiumoxide;
@@ -22,6 +24,7 @@ extern crate yansi;
 mod config;
 mod messages;
 mod service;
+mod storage;
 
 use futures::{Future, Stream};
 use switchroom_grpc::proto::server;
