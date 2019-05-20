@@ -37,7 +37,9 @@ impl Switchroom {
         &self,
         message: &proto::Message,
     ) -> Result<proto::Message, RequestError> {
-        Ok(message.clone())
+        use crate::messages::Hashable;
+        let message = message.hashed();
+        Ok(message)
     }
 
     #[instrument(INFO)]
@@ -94,10 +96,4 @@ impl proto::server::Switchroom for Switchroom {
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-    use std::sync::Mutex;
-
-    lazy_static! {
-        static ref LOCK: Mutex<i32> = Mutex::new(0);
-    }
-
 }

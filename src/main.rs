@@ -10,13 +10,17 @@ extern crate failure;
 extern crate serde_derive;
 #[macro_use]
 extern crate lazy_static;
+extern crate data_encoding;
 extern crate instrumented;
+extern crate prost;
+extern crate sodiumoxide;
 extern crate switchroom_grpc;
 extern crate toml;
 extern crate url;
 extern crate yansi;
 
 mod config;
+mod messages;
 mod service;
 
 use futures::{Future, Stream};
