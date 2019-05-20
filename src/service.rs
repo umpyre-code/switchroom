@@ -9,7 +9,12 @@ fn make_intcounter(name: &str, description: &str) -> prometheus::IntCounter {
     counter
 }
 
-lazy_static! {}
+lazy_static! {
+    static ref SEND_MESSAGE_CALLED: prometheus::IntCounter =
+        make_intcounter("send_message_called", "Send message endpoint called");
+    static ref GET_MESSAGES_CALLED: prometheus::IntCounter =
+        make_intcounter("get_messages_called", "Get messages endpoint called");
+}
 
 #[derive(Debug, Fail)]
 enum RequestError {
@@ -26,9 +31,54 @@ impl Switchroom {
     pub fn new() -> Self {
         Switchroom {}
     }
+
+    #[instrument(INFO)]
+    fn handle_send_message(
+        &self,
+        message: &proto::Message,
+    ) -> Result<proto::Message, RequestError> {
+        Ok(message.clone())
+    }
+
+    #[instrument(INFO)]
+    fn handle_get_messages(
+        &self,
+        _request: &proto::GetMessagesRequest,
+    ) -> Result<proto::GetMessagesResponse, RequestError> {
+        Ok(proto::GetMessagesResponse { messages: vec![] })
+    }
 }
 
 impl proto::server::Switchroom for Switchroom {
+    type SendMessageFuture =
+        future::FutureResult<Response<proto::Message>, switchroom_grpc::tower_grpc::Status>;
+    fn send_message(&mut self, request: Request<proto::Message>) -> Self::SendMessageFuture {
+        use futures::future::IntoFuture;
+        use switchroom_grpc::tower_grpc::{Code, Status};
+        SEND_MESSAGE_CALLED.inc();
+        self.handle_send_message(request.get_ref())
+            .map(Response::new)
+            .map_err(|err| Status::new(Code::InvalidArgument, err.to_string()))
+            .into_future()
+    }
+
+    type GetMessagesFuture = future::FutureResult<
+        Response<proto::GetMessagesResponse>,
+        switchroom_grpc::tower_grpc::Status,
+    >;
+    fn get_messages(
+        &mut self,
+        request: Request<proto::GetMessagesRequest>,
+    ) -> Self::GetMessagesFuture {
+        use futures::future::IntoFuture;
+        use switchroom_grpc::tower_grpc::{Code, Status};
+        GET_MESSAGES_CALLED.inc();
+        self.handle_get_messages(request.get_ref())
+            .map(Response::new)
+            .map_err(|err| Status::new(Code::InvalidArgument, err.to_string()))
+            .into_future()
+    }
+
     type CheckFuture = future::FutureResult<
         Response<proto::HealthCheckResponse>,
         switchroom_grpc::tower_grpc::Status,

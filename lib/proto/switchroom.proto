@@ -4,9 +4,30 @@ package switchroom;
 option java_package = "switchroom";
 
 service Switchroom {
+  rpc SendMessage(Message) returns (Message);
+  rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
   // Health check endpoint
   rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
 }
+
+// Represents one message
+message Message {
+  // A 16-byte blake2b hash of the message body
+  string hash = 1;
+  // The Client ID for the user sending this message
+  string from = 2;
+  // The Client ID for the recipient of this message
+  string to = 3;
+  // The encrypted message body
+  string body = 4;
+}
+
+message GetMessagesRequest {
+  // A sketch (serialized bloom filter) of the messages to skip (i.e., don't
+  // return messages in this sketch).
+  string sketch = 1;
+}
+message GetMessagesResponse { repeated Message messages = 1; }
 
 message HealthCheckRequest { string service = 1; }
 

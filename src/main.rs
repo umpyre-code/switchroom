@@ -40,10 +40,7 @@ pub fn main() {
 
     let mut server = Server::new(new_service);
 
-    let http = Http::new()
-        .http2_only(true)
-        .http2_max_concurrent_streams(Some(1000))
-        .clone();
+    let http = Http::new().http2_only(true).clone();
 
     let addr = config::CONFIG.service.bind_to_address.parse().unwrap();
     let bind = TcpListener::bind(&addr).expect("bind");
