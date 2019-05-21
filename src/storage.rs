@@ -1,6 +1,6 @@
 use crate::metrics;
 
-use foundationdb::tuple::{Decode, Encode};
+use foundationdb::tuple::{Decode, Encode, Result};
 use foundationdb::{self, *};
 use futures::Future;
 use switchroom_grpc::proto;
@@ -47,6 +47,11 @@ fn set_blob(trx: &Transaction, subspace: &Subspace, value: &[u8]) {
     let num_chunks = (value.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
     let chunk_size = (value.len() + num_chunks) / num_chunks;
 
+    println!(
+        "writing blob {:?} num_chunks={} chunk_size={}",
+        subspace, num_chunks, chunk_size
+    );
+
     for i in 0..num_chunks {
         let start = i * chunk_size;
         let end = if (i + 1) * chunk_size <= value.len() {
@@ -55,7 +60,12 @@ fn set_blob(trx: &Transaction, subspace: &Subspace, value: &[u8]) {
             value.len()
         };
 
-        trx.set(&subspace.pack(start as i64), &(value[start..end]).to_vec());
+        println!("chunk from start={} to end={}", start, end);
+
+        trx.set(
+            &subspace.pack(start as i64),
+            &(value.len() as i64, &value[start..end]).to_vec(),
+        );
     }
 }
 
@@ -94,7 +104,7 @@ impl DB {
 
         self.db.transact(move |trx| {
             let mut buf = Vec::new();
-            message.encode(&mut buf);
+            message.encode(&mut buf).unwrap();
 
             let m_subspace = Subspace::from("M");
 
@@ -142,56 +152,64 @@ impl DB {
         use futures::Stream;
         use prost::Message;
 
-        let mut subspace_start = ("M", client_id).to_vec();
-        subspace_start.push(0);
-        let mut subspace_end = ("M", client_id).to_vec();
-        subspace_end.push(0xff);
+        let range = RangeOptionBuilder::from(("M", client_id)).build();
 
         self.db.transact(move |trx| {
-            let start = KeySelector::new(subspace_start.clone(), true, 0);
-            let end = KeySelector::new(subspace_end.clone(), true, 0);
-            let range = RangeOptionBuilder::new(start, end).build();
-            // let range = RangeOptionBuilder::from(subspace.range()).build();
+            let range = range.clone();
             println!("range={:?}", range);
 
             // bytebuffer for messages
             let mut buf = Vec::new();
             let mut count = 0;
 
-            let mut messages: Vec<proto::Message> = trx
+            let messages: Vec<proto::Message> = trx
                 .get_ranges(range)
                 .map(|item| {
                     let kvs = item.key_values();
                     let mut messages: Vec<proto::Message> = vec![];
                     for kv in kvs.as_ref() {
                         count += 1;
-                        if let Ok(((_prefix, _client_id, _hash, n), _size)) =
-                            <(String, String, Vec<u8>, i64)>::decode_from(kv.key())
-                        {
-                            println!(
-                                "prefix={} client_id='{}' hash={} n={}",
-                                _prefix,
-                                _client_id,
-                                _hash.iter().map(|n| u64::from(*n)).sum::<u64>(),
-                                n
-                            );
-                            if let Ok((mut bytes, _size)) = <(Vec<u8>)>::decode_from(kv.value()) {
-                                if !buf.is_empty() && n == 0 {
-                                    if let Ok(message) = proto::Message::decode(buf.clone()) {
-                                        println!("message decoded successfully");
-                                        messages.push(message);
-                                    } else {
-                                        println!("message decode failure");
-                                        metrics::MESSAGE_DECODE_FAILURE.inc();
+                        let result: Result<(String, String, Vec<u8>, i64)> =
+                            Decode::try_from(kv.key());
+                        match result {
+                            Ok((_prefix, _client_id, _hash, n)) => {
+                                println!(
+                                    "prefix={} client_id='{}' hash={} n={}",
+                                    _prefix,
+                                    _client_id,
+                                    _hash.iter().map(|n| u64::from(*n)).sum::<u64>(),
+                                    n
+                                );
+                                let result: Result<(i64, Vec<u8>)> = Decode::try_from(kv.value());
+                                match result {
+                                    Ok((len, mut bytes)) => {
+                                        buf.append(&mut bytes);
+                                        println!(
+                                            "len={} bytes={} buflen={}",
+                                            len,
+                                            bytes.len(),
+                                            buf.len()
+                                        );
+                                        if buf.len() == len as usize {
+                                            match proto::Message::decode(buf.clone()) {
+                                                Ok(message) => {
+                                                    println!("message decoded successfully");
+                                                    messages.push(message);
+                                                }
+                                                Err(err) => {
+                                                    println!("message decode failure: {:?}", err);
+                                                    metrics::MESSAGE_DECODE_FAILURE.inc();
+                                                }
+                                            }
+                                            buf.clear();
+                                        }
                                     }
-                                    buf.clear();
-                                    buf.append(&mut bytes);
-                                } else {
-                                    buf.append(&mut bytes);
+                                    Err(err) => println!("failed to decode values: {:?}", err),
                                 }
                             }
-                        } else {
-                            println!("failed to decode key: {:?}", kv.key());
+                            Err(err) => {
+                                println!("failed to decode key: {:?}", err);
+                            }
                         }
                     }
                     stream::iter_ok::<
@@ -204,16 +222,6 @@ impl DB {
                 .wait()
                 .unwrap();
 
-            // Try decoding any message left in the buffer
-            if !buf.is_empty() {
-                if let Ok(message) = proto::Message::decode(buf.clone()) {
-                    println!("message decoded successfully");
-                    messages.push(message);
-                } else {
-                    println!("message decode failure");
-                    metrics::MESSAGE_DECODE_FAILURE.inc();
-                }
-            }
             println!("count={} messages={}", count, messages.len());
 
             Ok(messages)
@@ -306,5 +314,14 @@ mod tests {
             true
         );
         // }
+    }
+
+    #[test]
+    fn test_fdb_tuples() {
+        let t1 = (100 as i64, b"bytes".to_vec());
+        let bytes = t1.to_vec();
+        let ((integer, bytes), size) = <(i64, Vec<u8>)>::decode_from(&bytes).unwrap();
+        assert_eq!(integer, 100);
+        assert_eq!(bytes, b"bytes");
     }
 }
