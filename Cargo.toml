@@ -9,7 +9,6 @@ default-run = "switchroom"
 
 [dependencies]
 chrono = "0.4"
-data-encoding = "2"
 env_logger = { version = "0.5", default-features = false }
 failure = "0.1"
 foundationdb = "0.3"
@@ -34,3 +33,6 @@ trust-dns = { version = "0.16", default-features = false, features = ["dns-over-
 url = "1"
 uuid = "0.7"
 yansi = "0.5"
+
+[dev-dependencies]
+rand = "0.6"

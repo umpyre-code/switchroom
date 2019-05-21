@@ -4,7 +4,9 @@ package switchroom;
 option java_package = "switchroom";
 
 service Switchroom {
+  // Send a message
   rpc SendMessage(Message) returns (Message);
+  // Get messages from server
   rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
   // Health check endpoint
   rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
@@ -27,13 +29,13 @@ message Timestamp {
 message Message {
   // A 16-byte blake2b hash of the message body and timestamp. This is generate
   // by the server.
-  string hash = 1;
+  bytes hash = 1;
   // The client ID for the account sending this message
   string from = 2;
   // The client ID for the recipient of this message
   string to = 3;
   // The encrypted message body
-  string body = 4;
+  bytes body = 4;
   // The time the message was received by the server.
   Timestamp received_at = 5;
 }

@@ -11,7 +11,6 @@ extern crate failure;
 extern crate serde_derive;
 #[macro_use]
 extern crate lazy_static;
-extern crate data_encoding;
 extern crate foundationdb;
 extern crate instrumented;
 extern crate prost;
@@ -23,10 +22,12 @@ extern crate yansi;
 
 mod config;
 mod messages;
+mod metrics;
 mod service;
 mod storage;
 
 use futures::{Future, Stream};
+use std::sync::Arc;
 use switchroom_grpc::proto::server;
 use tokio::net::TcpListener;
 use tower_hyper::server::{Http, Server};
@@ -43,7 +44,9 @@ pub fn main() {
         instrumented::init(&config::CONFIG.metrics.bind_to_address);
     }
 
-    let new_service = server::SwitchroomServer::new(service::Switchroom::new());
+    let storage = Arc::new(storage::DB::new());
+
+    let new_service = server::SwitchroomServer::new(service::Switchroom::new(storage.clone()));
 
     let mut server = Server::new(new_service);
 

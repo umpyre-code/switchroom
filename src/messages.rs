@@ -14,7 +14,7 @@ impl Hashable for proto::Message {
             to: self.to.clone(),
             body: self.body.clone(),
             received_at: Some(get_timestamp()),
-            hash: "".into(),
+            hash: b"".to_vec(),
         };
         // compute the hash
         let hash = b2b_hash(&hash_message, 16);
@@ -30,7 +30,7 @@ impl Hashable for proto::Message {
             to: self.to.clone(),
             body: self.body.clone(),
             received_at: self.received_at.clone(),
-            hash: "".into(),
+            hash: b"".to_vec(),
         };
         // compute the hash
         let hash = b2b_hash(&hash_message, 16);
@@ -42,15 +42,14 @@ impl Hashable for proto::Message {
     }
 }
 
-fn b2b_hash(message: &proto::Message, digest_size: usize) -> String {
-    use data_encoding::BASE64_NOPAD;
+fn b2b_hash(message: &proto::Message, digest_size: usize) -> Vec<u8> {
     use sodiumoxide::crypto::generichash;
     let mut hasher = generichash::State::new(digest_size, None).unwrap();
     let mut buf = Vec::new();
     message.encode(&mut buf).unwrap();
     hasher.update(&buf).unwrap();
     let digest = hasher.finalize().unwrap();
-    BASE64_NOPAD.encode(digest.as_ref())
+    digest.as_ref().to_vec()
 }
 
 fn get_timestamp() -> proto::Timestamp {
@@ -82,7 +81,10 @@ mod tests {
             body: "yoyoyoyo".into(),
         };
         let hash = b2b_hash(&message, 16);
-        assert_eq!(hash, "2andvjnjZ/ooGivSAcvtlg");
+        assert_eq!(
+            hash,
+            vec![217, 169, 221, 190, 57, 227, 103, 250, 40, 26, 43, 210, 1, 203, 237, 150]
+        );
     }
 
     #[test]
@@ -100,7 +102,7 @@ mod tests {
         let new_message = message.hashed();
         assert_eq!(new_message.from, "from id");
         assert_eq!(new_message.to, "to id");
-        assert_eq!(new_message.body, "yoyoyoyo");
+        assert_eq!(new_message.body, b"yoyoyoyo");
     }
 
     #[test]
@@ -118,7 +120,7 @@ mod tests {
         let new_message = message.hashed();
         assert_eq!(new_message.from, "from id");
         assert_eq!(new_message.to, "to id");
-        assert_eq!(new_message.body, "yoyoyoyo");
+        assert_eq!(new_message.body, b"yoyoyoyo");
         let verified = new_message.verify();
         assert_eq!(verified.is_ok(), true);
 

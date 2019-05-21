@@ -1,20 +1,11 @@
+use crate::metrics;
+use crate::storage;
+
 use futures::future;
-use instrumented::{instrument, prometheus, register};
+use instrumented::instrument;
+use std::sync::Arc;
 use switchroom_grpc::proto;
 use switchroom_grpc::tower_grpc::{Request, Response};
-
-fn make_intcounter(name: &str, description: &str) -> prometheus::IntCounter {
-    let counter = prometheus::IntCounter::new(name, description).unwrap();
-    register(Box::new(counter.clone())).unwrap();
-    counter
-}
-
-lazy_static! {
-    static ref SEND_MESSAGE_CALLED: prometheus::IntCounter =
-        make_intcounter("send_message_called", "Send message endpoint called");
-    static ref GET_MESSAGES_CALLED: prometheus::IntCounter =
-        make_intcounter("get_messages_called", "Get messages endpoint called");
-}
 
 #[derive(Debug, Fail)]
 enum RequestError {
@@ -22,14 +13,26 @@ enum RequestError {
     NotFound,
     #[fail(display = "Bad arguments specified for request")]
     BadArguments,
+    #[fail(display = "Storage error: {:?}", err)]
+    StorageError { err: String },
 }
 
-#[derive(Debug, Clone)]
-pub struct Switchroom;
+impl From<storage::StorageError> for RequestError {
+    fn from(err: storage::StorageError) -> RequestError {
+        RequestError::StorageError {
+            err: err.to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Switchroom {
+    storage: Arc<storage::DB>,
+}
 
 impl Switchroom {
-    pub fn new() -> Self {
-        Switchroom {}
+    pub fn new(storage: Arc<storage::DB>) -> Self {
+        Switchroom { storage }
     }
 
     #[instrument(INFO)]
@@ -38,7 +41,8 @@ impl Switchroom {
         message: &proto::Message,
     ) -> Result<proto::Message, RequestError> {
         use crate::messages::Hashable;
-        let message = message.hashed();
+        use futures::Future;
+        let message = self.storage.insert_message(message.hashed()).wait()?;
         Ok(message)
     }
 
@@ -57,7 +61,7 @@ impl proto::server::Switchroom for Switchroom {
     fn send_message(&mut self, request: Request<proto::Message>) -> Self::SendMessageFuture {
         use futures::future::IntoFuture;
         use switchroom_grpc::tower_grpc::{Code, Status};
-        SEND_MESSAGE_CALLED.inc();
+        metrics::SEND_MESSAGE_CALLED.inc();
         self.handle_send_message(request.get_ref())
             .map(Response::new)
             .map_err(|err| Status::new(Code::InvalidArgument, err.to_string()))
@@ -74,7 +78,8 @@ impl proto::server::Switchroom for Switchroom {
     ) -> Self::GetMessagesFuture {
         use futures::future::IntoFuture;
         use switchroom_grpc::tower_grpc::{Code, Status};
-        GET_MESSAGES_CALLED.inc();
+        metrics::GET_MESSAGES_CALLED.inc();
+        self.storage.get_messages_for("lol");
         self.handle_get_messages(request.get_ref())
             .map(Response::new)
             .map_err(|err| Status::new(Code::InvalidArgument, err.to_string()))

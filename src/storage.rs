@@ -1,10 +1,12 @@
+use crate::metrics;
+
 use foundationdb::tuple::{Decode, Encode};
 use foundationdb::{self, *};
 use futures::Future;
 use switchroom_grpc::proto;
 
 #[derive(Debug, Fail)]
-enum StorageError {
+pub enum StorageError {
     #[fail(display = "unable to encode message: {:?}", err)]
     EncodingFailure { err: String },
     #[fail(display = "Fdb error: {:?}", err)]
@@ -27,9 +29,15 @@ impl From<prost::EncodeError> for StorageError {
     }
 }
 
+impl From<(foundationdb::transaction::RangeOption, foundationdb::Error)> for StorageError {
+    fn from(err: (foundationdb::transaction::RangeOption, foundationdb::Error)) -> StorageError {
+        StorageError::FdbError {
+            err: err.1.to_string(),
+        }
+    }
+}
+
 pub struct DB {
-    network: foundationdb::network::Network,
-    handle: Box<std::thread::JoinHandle<()>>,
     db: foundationdb::Database,
 }
 
@@ -51,38 +59,19 @@ fn set_blob(trx: &Transaction, subspace: &Subspace, value: &[u8]) {
     }
 }
 
-fn get_blob(
-    trx: &Transaction,
-    subspace: Subspace,
-) -> Box<Future<Item = Vec<u8>, Error = foundationdb::Error>> {
-    use foundationdb::transaction::RangeOptionBuilder;
-    use futures::future;
-
-    let range = RangeOptionBuilder::from(subspace.range());
-    Box::new(trx.get_range(range.build(), 0).and_then(|got_range| {
-        let mut buf = Vec::new();
-
-        for key_value in got_range.key_values().as_ref() {
-            buf.extend_from_slice(key_value.value());
-        }
-
-        future::ok(buf)
-    }))
-}
-
 impl DB {
     pub fn new() -> Self {
         use futures::future::*;
 
         let network = foundationdb::init().expect("failed to initialize Fdb client");
 
-        let handle = Box::new(std::thread::spawn(move || {
+        std::thread::spawn(move || {
             let error = network.run();
 
             if let Err(error) = error {
                 panic!("fdb_run_network: {}", error);
             }
-        }));
+        });
 
         // wait for the network thread to be started
         network.wait();
@@ -93,23 +82,13 @@ impl DB {
             .wait()
             .expect("failed to create Cluster");
 
-        DB {
-            network,
-            handle,
-            db,
-        }
-    }
-
-    pub fn stop(self) -> std::thread::Result<()> {
-        // cleanly shutdown the client
-        self.network.stop().expect("failed to stop Fdb client");
-        self.handle.join()
+        DB { db }
     }
 
     pub fn insert_message(
         &self,
         message: proto::Message,
-    ) -> Box<dyn Future<Item = (), Error = StorageError>> {
+    ) -> Box<dyn Future<Item = proto::Message, Error = StorageError>> {
         use chrono::{Datelike, Duration, NaiveDateTime};
         use prost::Message;
 
@@ -117,29 +96,29 @@ impl DB {
             let mut buf = Vec::new();
             message.encode(&mut buf)?;
 
-            let subspace = Subspace::from("M");
+            let m_subspace = Subspace::from("M");
 
             let timestamp = message.received_at.as_ref().unwrap();
             let received_at =
                 NaiveDateTime::from_timestamp(timestamp.seconds, timestamp.nanos as u32);
             let expiry = (received_at + Duration::days(30)).date();
 
-            let expiry = (expiry.year() as i64) * 10_000
-                + (expiry.month() as i64) * 100
-                + (expiry.day() as i64);
+            let expiry = i64::from(expiry.year()) * 10_000
+                + i64::from(expiry.month()) * 100
+                + i64::from(expiry.day());
 
             // Set blob for `from` client ID
             let subkey1 = (message.to.clone(), message.hash.clone());
             set_blob(
                 &trx,
-                &subspace.subspace(subkey1.clone()),
+                &m_subspace.subspace(subkey1.clone()),
                 &(buf.clone(), expiry).to_vec(),
             );
             // Set blob for `to` client ID
             let subkey2 = (message.from.clone(), message.hash.clone());
             set_blob(
                 &trx,
-                &subspace.subspace(subkey2.clone()),
+                &m_subspace.subspace(subkey2.clone()),
                 &(buf, expiry).to_vec(),
             );
 
@@ -147,25 +126,88 @@ impl DB {
             let exp_subspace = Subspace::from(("E", expiry));
             trx.set(&exp_subspace.pack(subkey1), &().to_vec());
             trx.set(&exp_subspace.pack(subkey2), &().to_vec());
-            Ok(())
+
+            // Return message
+            Ok(message.clone())
         })
     }
 
-    // pub fn get_messages_for(
-    //     &self,
-    //     client_id: &str,
-    // ) -> Box<Future<Item = Vec<proto::Message>, Error = StorageError>> {
-    // }
+    pub fn get_messages_for(
+        &self,
+        client_id: &str,
+    ) -> Box<dyn Future<Item = Vec<proto::Message>, Error = StorageError>> {
+        use foundationdb::keyselector::KeySelector;
+        use foundationdb::transaction::RangeOptionBuilder;
+        use futures::stream;
+        use futures::Stream;
+        use prost::Message;
+
+        let mut subspace_start = ("M", client_id).to_vec();
+        subspace_start.push(0);
+        let mut subspace_end = ("M", client_id).to_vec();
+        subspace_end.push(0xff);
+
+        self.db.transact(move |trx| {
+            let start = KeySelector::new(subspace_start.clone(), true, 0);
+            let end = KeySelector::new(subspace_end.clone(), true, 0);
+            let range = RangeOptionBuilder::new(start, end).build();
+
+            // bytebuffer for messages
+            let mut buf = Vec::new();
+
+            let messages: Vec<proto::Message> = trx
+                .get_ranges(range)
+                .map(|item| {
+                    let kvs = item.key_values();
+                    let mut messages: Vec<proto::Message> = vec![];
+                    for kv in kvs.as_ref() {
+                        if let Ok(((_prefix, _client_id, _hash, n), _size)) =
+                            <(String, String, String, i64)>::decode_from(kv.key())
+                        {
+                            if let Ok((mut bytes, _size)) = <(Vec<u8>)>::decode_from(kv.value()) {
+                                if !buf.is_empty() && n == 0 {
+                                    buf.append(&mut bytes);
+                                } else {
+                                    if let Ok(message) = proto::Message::decode(buf.clone()) {
+                                        messages.push(message);
+                                    } else {
+                                        metrics::MESSAGE_DECODE_FAILURE.inc();
+                                    }
+                                    buf.clear();
+                                    buf.append(&mut bytes);
+                                }
+                            }
+                        }
+                    }
+                    stream::iter_ok::<
+                        Vec<proto::Message>,
+                        (foundationdb::transaction::RangeOption, foundationdb::Error),
+                    >(messages)
+                })
+                .flatten()
+                .collect()
+                .wait()
+                .unwrap();
+
+            Ok(messages)
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    extern crate rand;
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
     use crate::messages::Hashable;
 
     #[test]
     fn blob_test() {
+        use self::rand::{thread_rng, Rng};
+
+        let mut arr = [0u8; 20000];
+        thread_rng().fill(&mut arr[..]);
+
         let message = proto::Message {
             hash: "".into(),
             from: "from id".into(),
@@ -174,14 +216,26 @@ mod tests {
                 seconds: 1,
                 nanos: 2,
             }),
-            body: "yoyoyoyo".into(),
+            body: arr.to_vec(),
         }
         .hashed();
 
         let db = DB::new();
 
-        let future = db.insert_message(message);
+        let future = db.insert_message(message.clone());
+        let stored_message = future.wait().unwrap();
+        assert_eq!(message, stored_message);
 
-        future.wait();
+        let future = db.get_messages_for("from id");
+        let result = future.wait();
+
+        assert_eq!(result.is_ok(), true);
+        assert_eq!(
+            result
+                .unwrap()
+                .iter()
+                .any(|m| m.hash == stored_message.hash),
+            true
+        );
     }
 }
