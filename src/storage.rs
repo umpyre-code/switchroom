@@ -320,7 +320,7 @@ mod tests {
     fn test_fdb_tuples() {
         let t1 = (100 as i64, b"bytes".to_vec());
         let bytes = t1.to_vec();
-        let ((integer, bytes), size) = <(i64, Vec<u8>)>::decode_from(&bytes).unwrap();
+        let (integer, bytes): (i64, Vec<u8>) = Decode::try_from(&bytes).unwrap();
         assert_eq!(integer, 100);
         assert_eq!(bytes, b"bytes");
     }
