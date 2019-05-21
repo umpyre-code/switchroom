@@ -94,7 +94,7 @@ impl DB {
 
         self.db.transact(move |trx| {
             let mut buf = Vec::new();
-            message.encode(&mut buf)?;
+            message.encode(&mut buf);
 
             let m_subspace = Subspace::from("M");
 
@@ -128,7 +128,7 @@ impl DB {
             trx.set(&exp_subspace.pack(subkey2), &().to_vec());
 
             // Return message
-            Ok(message.clone())
+            futures::future::ok(message.clone())
         })
     }
 
@@ -151,32 +151,47 @@ impl DB {
             let start = KeySelector::new(subspace_start.clone(), true, 0);
             let end = KeySelector::new(subspace_end.clone(), true, 0);
             let range = RangeOptionBuilder::new(start, end).build();
+            // let range = RangeOptionBuilder::from(subspace.range()).build();
+            println!("range={:?}", range);
 
             // bytebuffer for messages
             let mut buf = Vec::new();
+            let mut count = 0;
 
-            let messages: Vec<proto::Message> = trx
+            let mut messages: Vec<proto::Message> = trx
                 .get_ranges(range)
                 .map(|item| {
                     let kvs = item.key_values();
                     let mut messages: Vec<proto::Message> = vec![];
                     for kv in kvs.as_ref() {
+                        count += 1;
                         if let Ok(((_prefix, _client_id, _hash, n), _size)) =
-                            <(String, String, String, i64)>::decode_from(kv.key())
+                            <(String, String, Vec<u8>, i64)>::decode_from(kv.key())
                         {
+                            println!(
+                                "prefix={} client_id='{}' hash={} n={}",
+                                _prefix,
+                                _client_id,
+                                _hash.iter().map(|n| u64::from(*n)).sum::<u64>(),
+                                n
+                            );
                             if let Ok((mut bytes, _size)) = <(Vec<u8>)>::decode_from(kv.value()) {
                                 if !buf.is_empty() && n == 0 {
-                                    buf.append(&mut bytes);
-                                } else {
                                     if let Ok(message) = proto::Message::decode(buf.clone()) {
+                                        println!("message decoded successfully");
                                         messages.push(message);
                                     } else {
+                                        println!("message decode failure");
                                         metrics::MESSAGE_DECODE_FAILURE.inc();
                                     }
                                     buf.clear();
                                     buf.append(&mut bytes);
+                                } else {
+                                    buf.append(&mut bytes);
                                 }
                             }
+                        } else {
+                            println!("failed to decode key: {:?}", kv.key());
                         }
                     }
                     stream::iter_ok::<
@@ -188,6 +203,18 @@ impl DB {
                 .collect()
                 .wait()
                 .unwrap();
+
+            // Try decoding any message left in the buffer
+            if !buf.is_empty() {
+                if let Ok(message) = proto::Message::decode(buf.clone()) {
+                    println!("message decoded successfully");
+                    messages.push(message);
+                } else {
+                    println!("message decode failure");
+                    metrics::MESSAGE_DECODE_FAILURE.inc();
+                }
+            }
+            println!("count={} messages={}", count, messages.len());
 
             Ok(messages)
         })
@@ -201,10 +228,53 @@ mod tests {
     use super::*;
     use crate::messages::Hashable;
 
+    lazy_static! {
+        static ref TEST_DB: DB = { DB::new() };
+    }
+
     #[test]
-    fn blob_test() {
+    fn small_blob_test() {
         use self::rand::{thread_rng, Rng};
 
+        // for _ in 0..100 {
+        let mut arr = [0u8; 5];
+        thread_rng().fill(&mut arr[..]);
+
+        let message = proto::Message {
+            hash: "".into(),
+            from: "from id".into(),
+            to: "to id".into(),
+            received_at: Some(proto::Timestamp {
+                seconds: 1,
+                nanos: 2,
+            }),
+            body: arr.to_vec(),
+        }
+        .hashed();
+
+        let future = TEST_DB.insert_message(message.clone());
+        let stored_message = future.wait().unwrap();
+        assert_eq!(message, stored_message);
+
+        let future = TEST_DB.get_messages_for("from id");
+        let result = future.wait();
+
+        assert_eq!(result.is_ok(), true);
+        assert_eq!(
+            result
+                .unwrap()
+                .iter()
+                .any(|m| m.hash == stored_message.hash),
+            true
+        );
+        // }
+    }
+
+    #[test]
+    fn big_blob_test() {
+        use self::rand::{thread_rng, Rng};
+
+        // for _ in 0..100 {
         let mut arr = [0u8; 20000];
         thread_rng().fill(&mut arr[..]);
 
@@ -220,13 +290,11 @@ mod tests {
         }
         .hashed();
 
-        let db = DB::new();
-
-        let future = db.insert_message(message.clone());
+        let future = TEST_DB.insert_message(message.clone());
         let stored_message = future.wait().unwrap();
         assert_eq!(message, stored_message);
 
-        let future = db.get_messages_for("from id");
+        let future = TEST_DB.get_messages_for("from id");
         let result = future.wait();
 
         assert_eq!(result.is_ok(), true);
@@ -237,5 +305,6 @@ mod tests {
                 .any(|m| m.hash == stored_message.hash),
             true
         );
+        // }
     }
 }
