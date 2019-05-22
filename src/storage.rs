@@ -9,6 +9,8 @@ use switchroom_grpc::proto;
 pub enum StorageError {
     #[fail(display = "unable to encode message: {:?}", err)]
     EncodingFailure { err: String },
+    #[fail(display = "unable to decode message: {:?}", err)]
+    DecodingFailure { err: String },
     #[fail(display = "Fdb error: {:?}", err)]
     FdbError { err: String },
 }
@@ -29,10 +31,26 @@ impl From<prost::EncodeError> for StorageError {
     }
 }
 
+impl From<prost::DecodeError> for StorageError {
+    fn from(err: prost::DecodeError) -> StorageError {
+        StorageError::DecodingFailure {
+            err: err.to_string(),
+        }
+    }
+}
+
 impl From<(foundationdb::transaction::RangeOption, foundationdb::Error)> for StorageError {
     fn from(err: (foundationdb::transaction::RangeOption, foundationdb::Error)) -> StorageError {
         StorageError::FdbError {
             err: err.1.to_string(),
+        }
+    }
+}
+
+impl From<foundationdb::tuple::Error> for StorageError {
+    fn from(err: foundationdb::tuple::Error) -> StorageError {
+        StorageError::FdbError {
+            err: err.to_string(),
         }
     }
 }
@@ -43,14 +61,13 @@ pub struct DB {
 
 const CHUNK_SIZE: usize = 10_000;
 
-fn set_blob(trx: &Transaction, subspace: &Subspace, value: &[u8]) {
+type BlobKey = (String, String, Vec<u8>, i64);
+
+fn set_blob(trx: &Transaction, subspace: &Subspace, value: &[u8], expiry: i64) {
+    use prost::Message;
+
     let num_chunks = (value.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
     let chunk_size = (value.len() + num_chunks) / num_chunks;
-
-    println!(
-        "writing blob {:?} num_chunks={} chunk_size={}",
-        subspace, num_chunks, chunk_size
-    );
 
     for i in 0..num_chunks {
         let start = i * chunk_size;
@@ -60,12 +77,18 @@ fn set_blob(trx: &Transaction, subspace: &Subspace, value: &[u8]) {
             value.len()
         };
 
-        println!("chunk from start={} to end={}", start, end);
+        let blob_value = proto::BlobValue {
+            blob_length: value.len() as i64,
+            blob_chunk: i as i64,
+            expiry,
+            payload: value[start..end].into(),
+        };
+        let mut blob_value_buf = Vec::new();
+        blob_value
+            .encode(&mut blob_value_buf)
+            .expect("Failed to encode message");
 
-        trx.set(
-            &subspace.pack(start as i64),
-            &(value.len() as i64, &value[start..end]).to_vec(),
-        );
+        trx.set(&subspace.pack(start as i64), &blob_value_buf);
     }
 }
 
@@ -104,11 +127,14 @@ impl DB {
 
         self.db.transact(move |trx| {
             let mut buf = Vec::new();
-            message.encode(&mut buf).unwrap();
+            message.encode(&mut buf).expect("Failed to encode message");
 
             let m_subspace = Subspace::from("M");
 
-            let timestamp = message.received_at.as_ref().unwrap();
+            let timestamp = message
+                .received_at
+                .as_ref()
+                .expect("Couldn't get timestamp");
             let received_at =
                 NaiveDateTime::from_timestamp(timestamp.seconds, timestamp.nanos as u32);
             let expiry = (received_at + Duration::days(30)).date();
@@ -119,18 +145,10 @@ impl DB {
 
             // Set blob for `from` client ID
             let subkey1 = (message.to.clone(), message.hash.clone());
-            set_blob(
-                &trx,
-                &m_subspace.subspace(subkey1.clone()),
-                &(buf.clone(), expiry).to_vec(),
-            );
+            set_blob(&trx, &m_subspace.subspace(subkey1.clone()), &buf, expiry);
             // Set blob for `to` client ID
             let subkey2 = (message.from.clone(), message.hash.clone());
-            set_blob(
-                &trx,
-                &m_subspace.subspace(subkey2.clone()),
-                &(buf, expiry).to_vec(),
-            );
+            set_blob(&trx, &m_subspace.subspace(subkey2.clone()), &buf, expiry);
 
             // Set expiry keys
             let exp_subspace = Subspace::from(("E", expiry));
@@ -146,17 +164,15 @@ impl DB {
         &self,
         client_id: &str,
     ) -> Box<dyn Future<Item = Vec<proto::Message>, Error = StorageError>> {
-        use foundationdb::keyselector::KeySelector;
         use foundationdb::transaction::RangeOptionBuilder;
-        use futures::stream;
-        use futures::Stream;
+        use futures::{stream, Stream};
         use prost::Message;
 
         let range = RangeOptionBuilder::from(("M", client_id)).build();
 
         self.db.transact(move |trx| {
             let range = range.clone();
-            println!("range={:?}", range);
+            info!("range={:?}", range);
 
             // bytebuffer for messages
             let mut buf = Vec::new();
@@ -164,65 +180,42 @@ impl DB {
 
             let messages: Vec<proto::Message> = trx
                 .get_ranges(range)
+                .map_err(StorageError::from)
                 .map(|item| {
                     let kvs = item.key_values();
                     let mut messages: Vec<proto::Message> = vec![];
                     for kv in kvs.as_ref() {
                         count += 1;
-                        let result: Result<(String, String, Vec<u8>, i64)> =
-                            Decode::try_from(kv.key());
+                        let result: Result<BlobKey> = Decode::try_from(kv.key());
                         match result {
                             Ok((_prefix, _client_id, _hash, n)) => {
-                                println!(
-                                    "prefix={} client_id='{}' hash={} n={}",
-                                    _prefix,
-                                    _client_id,
-                                    _hash.iter().map(|n| u64::from(*n)).sum::<u64>(),
-                                    n
-                                );
-                                let result: Result<(i64, Vec<u8>)> = Decode::try_from(kv.value());
-                                match result {
-                                    Ok((len, mut bytes)) => {
-                                        buf.append(&mut bytes);
-                                        println!(
-                                            "len={} bytes={} buflen={}",
-                                            len,
-                                            bytes.len(),
-                                            buf.len()
-                                        );
-                                        if buf.len() == len as usize {
-                                            match proto::Message::decode(buf.clone()) {
+                                match proto::BlobValue::decode(kv.value()) {
+                                    Ok(mut blob_value) => {
+                                        buf.append(&mut blob_value.payload);
+                                        if buf.len() == blob_value.blob_length as usize {
+                                            match proto::Message::decode(&buf) {
                                                 Ok(message) => {
-                                                    println!("message decoded successfully");
                                                     messages.push(message);
                                                 }
                                                 Err(err) => {
-                                                    println!("message decode failure: {:?}", err);
+                                                    error!("failed to decode message: {:?}", err);
                                                     metrics::MESSAGE_DECODE_FAILURE.inc();
                                                 }
                                             }
                                             buf.clear();
                                         }
                                     }
-                                    Err(err) => println!("failed to decode values: {:?}", err),
+                                    Err(err) => error!("failed to decode blob value: {:?}", err),
                                 }
                             }
-                            Err(err) => {
-                                println!("failed to decode key: {:?}", err);
-                            }
+                            Err(err) => error!("failed to decode blob key: {:?}", err),
                         }
                     }
-                    stream::iter_ok::<
-                        Vec<proto::Message>,
-                        (foundationdb::transaction::RangeOption, foundationdb::Error),
-                    >(messages)
+                    stream::iter_ok::<Vec<proto::Message>, StorageError>(messages)
                 })
                 .flatten()
                 .collect()
-                .wait()
-                .unwrap();
-
-            println!("count={} messages={}", count, messages.len());
+                .wait()?;
 
             Ok(messages)
         })
@@ -244,84 +237,75 @@ mod tests {
     fn small_blob_test() {
         use self::rand::{thread_rng, Rng};
 
-        // for _ in 0..100 {
-        let mut arr = [0u8; 5];
-        thread_rng().fill(&mut arr[..]);
+        for _ in 0..10 {
+            let mut arr = [0u8; 5];
+            thread_rng().fill(&mut arr[..]);
 
-        let message = proto::Message {
-            hash: "".into(),
-            from: "from id".into(),
-            to: "to id".into(),
-            received_at: Some(proto::Timestamp {
-                seconds: 1,
-                nanos: 2,
-            }),
-            body: arr.to_vec(),
+            let message = proto::Message {
+                hash: "".into(),
+                from: "from id".into(),
+                to: "to id".into(),
+                received_at: Some(proto::Timestamp {
+                    seconds: 1,
+                    nanos: 2,
+                }),
+                body: arr.to_vec(),
+            }
+            .hashed();
+
+            let future = TEST_DB.insert_message(message.clone());
+            let stored_message = future.wait().unwrap();
+            assert_eq!(message, stored_message);
+
+            let future = TEST_DB.get_messages_for("from id");
+            let result = future.wait();
+
+            assert_eq!(result.is_ok(), true);
+            assert_eq!(
+                result
+                    .unwrap()
+                    .iter()
+                    .any(|m| m.hash == stored_message.hash),
+                true
+            );
         }
-        .hashed();
-
-        let future = TEST_DB.insert_message(message.clone());
-        let stored_message = future.wait().unwrap();
-        assert_eq!(message, stored_message);
-
-        let future = TEST_DB.get_messages_for("from id");
-        let result = future.wait();
-
-        assert_eq!(result.is_ok(), true);
-        assert_eq!(
-            result
-                .unwrap()
-                .iter()
-                .any(|m| m.hash == stored_message.hash),
-            true
-        );
-        // }
     }
 
     #[test]
     fn big_blob_test() {
         use self::rand::{thread_rng, Rng};
 
-        // for _ in 0..100 {
-        let mut arr = [0u8; 20000];
-        thread_rng().fill(&mut arr[..]);
+        for _ in 0..3 {
+            let mut arr = [0u8; 40000];
+            thread_rng().fill(&mut arr[..]);
 
-        let message = proto::Message {
-            hash: "".into(),
-            from: "from id".into(),
-            to: "to id".into(),
-            received_at: Some(proto::Timestamp {
-                seconds: 1,
-                nanos: 2,
-            }),
-            body: arr.to_vec(),
+            let message = proto::Message {
+                hash: "".into(),
+                from: "from id".into(),
+                to: "to id".into(),
+                received_at: Some(proto::Timestamp {
+                    seconds: 1,
+                    nanos: 2,
+                }),
+                body: arr.to_vec(),
+            }
+            .hashed();
+
+            let future = TEST_DB.insert_message(message.clone());
+            let stored_message = future.wait().unwrap();
+            assert_eq!(message, stored_message);
+
+            let future = TEST_DB.get_messages_for("from id");
+            let result = future.wait();
+
+            assert_eq!(result.is_ok(), true);
+            assert_eq!(
+                result
+                    .unwrap()
+                    .iter()
+                    .any(|m| m.hash == stored_message.hash),
+                true
+            );
         }
-        .hashed();
-
-        let future = TEST_DB.insert_message(message.clone());
-        let stored_message = future.wait().unwrap();
-        assert_eq!(message, stored_message);
-
-        let future = TEST_DB.get_messages_for("from id");
-        let result = future.wait();
-
-        assert_eq!(result.is_ok(), true);
-        assert_eq!(
-            result
-                .unwrap()
-                .iter()
-                .any(|m| m.hash == stored_message.hash),
-            true
-        );
-        // }
-    }
-
-    #[test]
-    fn test_fdb_tuples() {
-        let t1 = (100 as i64, b"bytes".to_vec());
-        let bytes = t1.to_vec();
-        let (integer, bytes): (i64, Vec<u8>) = Decode::try_from(&bytes).unwrap();
-        assert_eq!(integer, 100);
-        assert_eq!(bytes, b"bytes");
     }
 }
