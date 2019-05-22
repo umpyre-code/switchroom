@@ -22,6 +22,17 @@ RUN GRPC_HEALTH_PROBE_VERSION=v0.2.0 && \
   wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
   chmod +x /bin/grpc_health_probe
 
+# Install foundationdb client library
+ENV VERSION=6.0.18
+ENV VERSION2=${VERSION}-1
+ENV BASE_URL=https://www.foundationdb.org/downloads/${VERSION}
+
+ADD ${BASE_URL}/ubuntu/installers/foundationdb-clients_${VERSION2}_amd64.deb /foundationdb-clients.deb
+RUN apt-get update -qq \
+&& apt-get install -qqy libclang1 \
+&& dpkg -i /foundationdb-clients.deb \
+&& rm /foundationdb-clients.deb
+
 WORKDIR /app
 
 COPY . /app/src
