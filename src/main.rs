@@ -44,7 +44,7 @@ pub fn main() {
         instrumented::init(&config::CONFIG.metrics.bind_to_address);
     }
 
-    let storage = Arc::new(storage::DB::new());
+    let storage = Arc::new(storage::DB::new(config::CONFIG.message_expiry_days));
 
     let new_service = server::SwitchroomServer::new(service::Switchroom::new(storage.clone()));
 

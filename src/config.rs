@@ -9,6 +9,7 @@ use yansi::Paint;
 pub struct Config {
     pub service: Service,
     pub metrics: Metrics,
+    pub message_expiry_days: i64,
 }
 
 #[derive(Debug, Deserialize)]
