@@ -63,7 +63,7 @@ pub struct DB {
 const CHUNK_SIZE: usize = 10_000;
 
 type BlobKey = (String, String, Vec<u8>, i64);
-type ExpKey = (String, i64, Vec<u8>, Vec<u8>);
+type ExpKey = (String, i64, String, Vec<u8>);
 
 fn set_blob(trx: &Transaction, subspace: &Subspace, value: &[u8], expiry: i64) {
     use prost::Message;
@@ -131,7 +131,6 @@ impl DB {
     ) -> Box<dyn Future<Item = proto::Message, Error = StorageError>> {
         use chrono::prelude::*;
         use prost::Message;
-        let expiry_days = self.expiry_days;
 
         self.db.transact(move |trx| {
             let mut buf = Vec::new();
@@ -193,7 +192,7 @@ impl DB {
                     for kv in kvs.as_ref() {
                         let result: Result<BlobKey> = Decode::try_from(kv.key());
                         match result {
-                            Ok((_prefix, _client_id, _hash, n)) => {
+                            Ok((_prefix, _client_id, _hash, _n)) => {
                                 match proto::BlobValue::decode(kv.value()) {
                                     Ok(mut blob_value) => {
                                         buf.append(&mut blob_value.payload);
@@ -230,16 +229,15 @@ impl DB {
         use chrono::prelude::*;
         use foundationdb::keyselector::KeySelector;
         use foundationdb::transaction::RangeOptionBuilder;
-        use futures::future;
         use futures::{stream, Stream};
 
         let expiry_date = (Utc::now() - chrono::Duration::days(self.expiry_days)).date();
         let expiry = to_integer_date(expiry_date);
 
-        let start = KeySelector::new(("R", 0).to_vec(), true, 0);
-        let end = KeySelector::new(("R", expiry).to_vec(), true, 0);
+        let start = KeySelector::first_greater_or_equal(&("R", 0).to_vec());
+        let end = KeySelector::last_less_or_equal(&("R", expiry).to_vec());
 
-        let range = RangeOptionBuilder::new(start, end).build();
+        let range = RangeOptionBuilder::new(start.clone(), end.clone()).build();
 
         self.db.transact(move |trx| {
             let range = range.clone();
@@ -247,33 +245,25 @@ impl DB {
                 .map_err(StorageError::from)
                 .map(|item| {
                     let kvs = item.key_values();
-                    stream::iter_ok::<Vec<(Vec<u8>, Vec<u8>)>, StorageError>(
-                        kvs.as_ref()
-                            .iter()
-                            .filter_map(|kv| {
-                                let result: Result<ExpKey> = Decode::try_from(kv.key());
-                                match result {
-                                    Ok((_prefix, _expiry, client_id, hash)) => {
-                                        println!(
-                                            "prefix={} expiry={} client_id={:?} hash={:?}",
-                                            _prefix, _expiry, client_id, hash
-                                        );
-                                        Some((client_id, hash))
-                                    }
-                                    Err(err) => {
-                                        error!("error decoding key: {:?}", err);
-                                        None
-                                    }
-                                }
-                            })
-                            .collect(),
-                    )
-                })
-                .map(|item| {
-                    println!("{:?}", item);
+                    for kv in kvs.as_ref() {
+                        let result: Result<ExpKey> = Decode::try_from(kv.key());
+                        match result {
+                            Ok(t) => {
+                                let (_prefix, _expiry, client_id, hash) = t;
+                                // Clear this message
+                                trx.clear_subspace_range(Subspace::from(("M", client_id, hash)));
+                            }
+                            Err(err) => {
+                                error!("error decoding key: {:?}", err);
+                            }
+                        }
+                    }
                 })
                 .collect()
                 .wait()?;
+
+            // Clear range of received timestamp keys
+            trx.clear_range(start.key(), end.key());
 
             Ok(())
         })
@@ -293,7 +283,8 @@ mod tests {
 
     #[test]
     fn small_blob_test() {
-        use self::rand::{thread_rng, Rng};
+        use self::rand::{thread_rng, Rng, RngCore};
+        let rand_prefix = thread_rng().next_u64();
 
         for _ in 0..10 {
             let mut arr = [0u8; 5];
@@ -301,8 +292,8 @@ mod tests {
 
             let message = proto::Message {
                 hash: "".into(),
-                from: "from id".into(),
-                to: "to id".into(),
+                from: format!("from id {}", rand_prefix),
+                to: format!("to id {}", rand_prefix),
                 received_at: Some(proto::Timestamp {
                     seconds: 1,
                     nanos: 2,
@@ -315,7 +306,7 @@ mod tests {
             let stored_message = future.wait().unwrap();
             assert_eq!(message, stored_message);
 
-            let future = TEST_DB.get_messages_for("from id");
+            let future = TEST_DB.get_messages_for(&format!("from id {}", rand_prefix));
             let result = future.wait();
 
             assert_eq!(result.is_ok(), true);
@@ -331,7 +322,8 @@ mod tests {
 
     #[test]
     fn big_blob_test() {
-        use self::rand::{thread_rng, Rng};
+        use self::rand::{thread_rng, Rng, RngCore};
+        let rand_prefix = thread_rng().next_u64();
 
         for _ in 0..3 {
             let mut arr = [0u8; 40000];
@@ -339,8 +331,8 @@ mod tests {
 
             let message = proto::Message {
                 hash: "".into(),
-                from: "from id".into(),
-                to: "to id".into(),
+                from: format!("from id {}", rand_prefix),
+                to: format!("to id {}", rand_prefix),
                 received_at: Some(proto::Timestamp {
                     seconds: 1,
                     nanos: 2,
@@ -353,7 +345,7 @@ mod tests {
             let stored_message = future.wait().unwrap();
             assert_eq!(message, stored_message);
 
-            let future = TEST_DB.get_messages_for("from id");
+            let future = TEST_DB.get_messages_for(&format!("from id {}", rand_prefix));
             let result = future.wait();
 
             assert_eq!(result.is_ok(), true);
@@ -369,35 +361,54 @@ mod tests {
 
     #[test]
     fn expired_keys_test() {
-        use self::rand::{thread_rng, Rng};
+        use self::rand::{thread_rng, Rng, RngCore};
+        let rand_prefix = thread_rng().next_u64();
+        let n = 10;
 
-        for _ in 0..10 {
+        for _ in 0..n {
             let mut arr = [0u8; 5];
             thread_rng().fill(&mut arr[..]);
 
-            let message = proto::Message {
-                hash: "".into(),
-                from: "be expired".into(),
-                to: "to id".into(),
+            let expired_message = proto::Message {
+                hash: format!("hash {} {}", n, rand_prefix).into(),
+                from: format!("expired {}", rand_prefix),
+                to: format!("nowhere {}", rand_prefix),
                 received_at: Some(proto::Timestamp {
-                    seconds: 1,
+                    seconds: 1 + n as i64,
                     nanos: 2,
                 }),
+                body: arr.to_vec(),
+            };
+
+            let not_expired_message = proto::Message {
+                hash: "".into(),
+                from: format!("not expired {}", rand_prefix),
+                to: format!("nowhere {}", rand_prefix),
+                received_at: None,
                 body: arr.to_vec(),
             }
             .hashed();
 
-            let future = TEST_DB.insert_message(message.clone());
+            let future = TEST_DB.insert_message(expired_message.clone());
             let stored_message = future.wait().unwrap();
-            assert_eq!(message, stored_message);
+            assert_eq!(expired_message, stored_message);
+            let future = TEST_DB.insert_message(not_expired_message.clone());
+            let stored_message = future.wait().unwrap();
+            assert_eq!(not_expired_message, stored_message);
         }
 
         TEST_DB.clear_expired().wait().unwrap();
 
-        let future = TEST_DB.get_messages_for("be expired");
+        let future = TEST_DB.get_messages_for(&format!("expired {}", rand_prefix));
         let result = future.wait();
 
         assert_eq!(result.is_ok(), true);
         assert_eq!(result.unwrap().len(), 0);
+
+        let future = TEST_DB.get_messages_for(&format!("not expired {}", rand_prefix));
+        let result = future.wait();
+
+        assert_eq!(result.is_ok(), true);
+        assert_eq!(result.unwrap().len(), n);
     }
 }
