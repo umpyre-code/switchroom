@@ -3,28 +3,21 @@ extern crate futures;
 #[macro_use]
 extern crate log;
 extern crate chrono;
-extern crate tokio;
-extern crate tower_hyper;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate lazy_static;
 extern crate foundationdb;
 extern crate instrumented;
 extern crate prost;
 extern crate sodiumoxide;
+extern crate switchroom;
 extern crate switchroom_grpc;
+extern crate tokio;
 extern crate toml;
+extern crate tower_hyper;
 extern crate url;
 extern crate yansi;
 
-mod config;
-mod messages;
-mod metrics;
-mod service;
-mod storage;
+use switchroom::config;
+use switchroom::service;
+use switchroom::storage;
 
 use futures::{Future, Stream};
 use std::sync::Arc;

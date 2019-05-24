@@ -23,4 +23,5 @@ extern crate yansi;
 pub mod config;
 pub mod messages;
 pub mod metrics;
+pub mod service;
 pub mod storage;
