@@ -229,7 +229,7 @@ impl DB {
         use chrono::prelude::*;
         use foundationdb::keyselector::KeySelector;
         use foundationdb::transaction::RangeOptionBuilder;
-        use futures::{stream, Stream};
+        use futures::Stream;
 
         let expiry_date = (Utc::now() - chrono::Duration::days(self.expiry_days)).date();
         let expiry = to_integer_date(expiry_date);
