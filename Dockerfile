@@ -29,7 +29,7 @@ ENV BASE_URL=https://www.foundationdb.org/downloads/${VERSION}
 
 ADD ${BASE_URL}/ubuntu/installers/foundationdb-clients_${VERSION2}_amd64.deb /foundationdb-clients.deb
 RUN apt-get update -qq \
-&& apt-get install -qqy libclang1 \
+&& apt-get install -qqy libclang1 dnsutils \
 && dpkg -i /foundationdb-clients.deb \
 && rm /foundationdb-clients.deb
 
