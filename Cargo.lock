@@ -283,17 +283,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "env_logger"
-version = "0.5.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "atty 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "humantime 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "termcolor 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "env_logger"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
@@ -545,7 +534,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "instrumented"
 version = "0.1.0"
-source = "git+ssh://git@github.com/umpyre-code/instrumented.git#d8d23883934ed3e01d0e8529e003ba3a9558d9d5"
+source = "git+ssh://git@github.com/umpyre-code/instrumented.git#b56a5ca3e55d749b7d86715c9d1e474765838361"
 dependencies = [
  "hyper 0.12.29 (registry+https://github.com/rust-lang/crates.io-index)",
  "instrumented-codegen 0.1.0 (git+ssh://git@github.com/umpyre-code/instrumented.git)",
@@ -558,7 +547,7 @@ dependencies = [
 [[package]]
 name = "instrumented-codegen"
 version = "0.1.0"
-source = "git+ssh://git@github.com/umpyre-code/instrumented.git#d8d23883934ed3e01d0e8529e003ba3a9558d9d5"
+source = "git+ssh://git@github.com/umpyre-code/instrumented.git#b56a5ca3e55d749b7d86715c9d1e474765838361"
 dependencies = [
  "darling 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1184,7 +1173,7 @@ name = "switchroom"
 version = "0.1.0"
 dependencies = [
  "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "env_logger 0.5.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "foundationdb 0.3.0 (git+https://github.com/bluejekyll/foundationdb-rs)",
  "futures 0.1.27 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1825,7 +1814,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum darling_core 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "6afc018370c3bff3eb51f89256a6bdb18b4fdcda72d577982a14954a7a0b402c"
 "checksum darling_macro 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c6d8dac1c6f1d29a41c4712b4400f878cb4fcc4c7628f298dd75038e024998d1"
 "checksum either 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "5527cfe0d098f36e3f8839852688e63c8fff1c90b2b405aef730615f9a7bcf7b"
-"checksum env_logger 0.5.13 (registry+https://github.com/rust-lang/crates.io-index)" = "15b0a4d2e39f8420210be8b27eeda28029729e2fd4291019455016c348240c38"
 "checksum env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b61fa891024a945da30a9581546e8cfaf5602c7b3f4c137a2805cf388f92075a"
 "checksum failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "795bd83d3abeb9220f257e597aa0080a508b27533824adf336529648f6abf7e2"
 "checksum failure_derive 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "ea1063915fd7ef4309e222a5a07cf9c319fb9c7836b1f89b85458672dbb127e1"
