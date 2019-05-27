@@ -49,9 +49,12 @@ impl Switchroom {
     #[instrument(INFO)]
     fn handle_get_messages(
         &self,
-        _request: &proto::GetMessagesRequest,
+        request: &proto::GetMessagesRequest,
     ) -> Result<proto::GetMessagesResponse, RequestError> {
-        Ok(proto::GetMessagesResponse { messages: vec![] })
+        use futures::Future;
+        // The sketch is currently unused (not implemented)
+        let messages = self.storage.get_messages_for(&request.client_id).wait()?;
+        Ok(proto::GetMessagesResponse { messages })
     }
 }
 
