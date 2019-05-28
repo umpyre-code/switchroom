@@ -82,7 +82,6 @@ impl proto::server::Switchroom for Switchroom {
         use futures::future::IntoFuture;
         use switchroom_grpc::tower_grpc::{Code, Status};
         metrics::GET_MESSAGES_CALLED.inc();
-        self.storage.get_messages_for("lol");
         self.handle_get_messages(request.get_ref())
             .map(Response::new)
             .map_err(|err| Status::new(Code::InvalidArgument, err.to_string()))

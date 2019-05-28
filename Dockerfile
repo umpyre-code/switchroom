@@ -23,7 +23,7 @@ RUN GRPC_HEALTH_PROBE_VERSION=v0.2.0 && \
   chmod +x /bin/grpc_health_probe
 
 # Install foundationdb client library
-ENV VERSION=6.0.18
+ENV VERSION=6.1.8
 ENV VERSION2=${VERSION}-1
 ENV BASE_URL=https://www.foundationdb.org/downloads/${VERSION}
 
