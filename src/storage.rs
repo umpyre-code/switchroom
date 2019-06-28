@@ -301,6 +301,7 @@ mod tests {
                 body: arr.to_vec(),
                 nonce: "".into(),
                 public_key: "".into(),
+                pda: "PDA".into(),
             }
             .hashed();
 
@@ -342,6 +343,7 @@ mod tests {
                 body: arr.to_vec(),
                 nonce: "".into(),
                 public_key: "".into(),
+                pda: "PDA".into(),
             }
             .hashed();
 
@@ -384,6 +386,7 @@ mod tests {
                 body: arr.to_vec(),
                 nonce: "".into(),
                 public_key: "".into(),
+                pda: "PDA".into(),
             };
 
             let not_expired_message = proto::Message {
@@ -394,6 +397,7 @@ mod tests {
                 body: arr.to_vec(),
                 nonce: "".into(),
                 public_key: "".into(),
+                pda: "PDA".into(),
             }
             .hashed();
 

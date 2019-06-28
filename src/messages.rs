@@ -74,13 +74,14 @@ mod tests {
                 nanos: 2,
             }),
             body: "yoyoyoyo".into(),
-            nonce: "".into(),
-            public_key: "".into(),
+            nonce: "nonce".into(),
+            public_key: "public_key".into(),
+            pda: "PDA".into(),
         };
         let hash = b2b_hash(&message, 16);
         assert_eq!(
             hash,
-            vec![217, 169, 221, 190, 57, 227, 103, 250, 40, 26, 43, 210, 1, 203, 237, 150]
+            vec![148, 29, 8, 139, 123, 10, 111, 171, 180, 89, 198, 115, 66, 26, 217, 44]
         );
     }
 
@@ -97,6 +98,7 @@ mod tests {
             body: "yoyoyoyo".into(),
             nonce: "".into(),
             public_key: "".into(),
+            pda: "PDA".into(),
         };
         let new_message = message.hashed();
         assert_eq!(new_message.from, "from id");
@@ -117,6 +119,7 @@ mod tests {
             body: "yoyoyoyo".into(),
             nonce: "".into(),
             public_key: "".into(),
+            pda: "PDA".into(),
         };
         let new_message = message.hashed();
         assert_eq!(new_message.from, "from id");

@@ -42,6 +42,8 @@ message Message {
   bytes nonce = 6;
   // The public key used by the sender of this message
   bytes public_key = 7;
+  // Public display of affection for this message
+  string pda = 8;
 }
 
 message GetMessagesRequest {
