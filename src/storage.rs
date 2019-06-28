@@ -299,6 +299,8 @@ mod tests {
                     nanos: 2,
                 }),
                 body: arr.to_vec(),
+                nonce: "".into(),
+                public_key: "".into(),
             }
             .hashed();
 
@@ -338,6 +340,8 @@ mod tests {
                     nanos: 2,
                 }),
                 body: arr.to_vec(),
+                nonce: "".into(),
+                public_key: "".into(),
             }
             .hashed();
 
@@ -378,6 +382,8 @@ mod tests {
                     nanos: 2,
                 }),
                 body: arr.to_vec(),
+                nonce: "".into(),
+                public_key: "".into(),
             };
 
             let not_expired_message = proto::Message {
@@ -386,6 +392,8 @@ mod tests {
                 to: format!("nowhere {}", rand_prefix),
                 received_at: None,
                 body: arr.to_vec(),
+                nonce: "".into(),
+                public_key: "".into(),
             }
             .hashed();
 

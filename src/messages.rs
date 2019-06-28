@@ -10,11 +10,9 @@ impl Hashable for proto::Message {
     fn hashed(&self) -> Self {
         // copy fields from incoming message into new message, and update timestamp
         let mut hash_message = proto::Message {
-            from: self.from.clone(),
-            to: self.to.clone(),
-            body: self.body.clone(),
             received_at: Some(get_timestamp()),
             hash: b"".to_vec(),
+            ..self.clone()
         };
         // compute the hash
         let hash = b2b_hash(&hash_message, 16);
@@ -26,11 +24,8 @@ impl Hashable for proto::Message {
     fn verify(&self) -> Result<(), ()> {
         // copy fields from incoming message into new message, and update timestamp
         let hash_message = proto::Message {
-            from: self.from.clone(),
-            to: self.to.clone(),
-            body: self.body.clone(),
-            received_at: self.received_at.clone(),
             hash: b"".to_vec(),
+            ..self.clone()
         };
         // compute the hash
         let hash = b2b_hash(&hash_message, 16);
@@ -79,6 +74,8 @@ mod tests {
                 nanos: 2,
             }),
             body: "yoyoyoyo".into(),
+            nonce: "".into(),
+            public_key: "".into(),
         };
         let hash = b2b_hash(&message, 16);
         assert_eq!(
@@ -98,6 +95,8 @@ mod tests {
                 nanos: 2,
             }),
             body: "yoyoyoyo".into(),
+            nonce: "".into(),
+            public_key: "".into(),
         };
         let new_message = message.hashed();
         assert_eq!(new_message.from, "from id");
@@ -116,6 +115,8 @@ mod tests {
                 nanos: 2,
             }),
             body: "yoyoyoyo".into(),
+            nonce: "".into(),
+            public_key: "".into(),
         };
         let new_message = message.hashed();
         assert_eq!(new_message.from, "from id");

@@ -38,6 +38,10 @@ message Message {
   bytes body = 4;
   // The time the message was received by the server.
   Timestamp received_at = 5;
+  // The nonce used to encrypt this message
+  bytes nonce = 6;
+  // The public key used by the sender of this message
+  bytes public_key = 7;
 }
 
 message GetMessagesRequest {
