@@ -30,21 +30,25 @@ message Message {
   // A 16-byte blake2b hash of the message body and timestamp. This is generate
   // by the server.
   bytes hash = 1;
-  // The client ID for the account sending this message
+  // The client ID for the account sending this message.
   string from = 2;
-  // The client ID for the recipient of this message
+  // The client ID for the recipient of this message.
   string to = 3;
-  // The encrypted message body
+  // The encrypted message body. Stored as bytes, rather than with base64
+  // encoding, to save on storage space.
   bytes body = 4;
-  // Public display of affection for this message
+  // Public display of affection for this message.
   string pda = 5;
   // The time the message was received by the server.
   Timestamp received_at = 6;
-  // The nonce used to encrypt this message
+  // The nonce used to encrypt this message. Stored as bytes, rather than with
+  // base64 encoding, to save on storage space.
   bytes nonce = 7;
-  // The public key used by the sender of this message
+  // The public key used by the sender of this message. Stored as bytes, rather
+  // than with base64 encoding, to save on storage space.
   bytes sender_public_key = 8;
-  // The recipient's public key used to encrypt the message
+  // The recipient's public key used to encrypt the message. Stored as bytes,
+  // rather than with base64 encoding, to save on storage space.
   bytes recipient_public_key = 9;
 }
 
