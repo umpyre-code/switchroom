@@ -300,7 +300,8 @@ mod tests {
                 }),
                 body: arr.to_vec(),
                 nonce: "".into(),
-                public_key: "".into(),
+                sender_public_key: "1".into(),
+                recipient_public_key: "2".into(),
                 pda: "PDA".into(),
             }
             .hashed();
@@ -342,7 +343,8 @@ mod tests {
                 }),
                 body: arr.to_vec(),
                 nonce: "".into(),
-                public_key: "".into(),
+                sender_public_key: "1".into(),
+                recipient_public_key: "2".into(),
                 pda: "PDA".into(),
             }
             .hashed();
@@ -385,7 +387,8 @@ mod tests {
                 }),
                 body: arr.to_vec(),
                 nonce: "".into(),
-                public_key: "".into(),
+                sender_public_key: "1".into(),
+                recipient_public_key: "2".into(),
                 pda: "PDA".into(),
             };
 
@@ -396,7 +399,8 @@ mod tests {
                 received_at: None,
                 body: arr.to_vec(),
                 nonce: "".into(),
-                public_key: "".into(),
+                sender_public_key: "1".into(),
+                recipient_public_key: "2".into(),
                 pda: "PDA".into(),
             }
             .hashed();

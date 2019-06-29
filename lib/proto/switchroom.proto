@@ -36,14 +36,16 @@ message Message {
   string to = 3;
   // The encrypted message body
   bytes body = 4;
-  // The time the message was received by the server.
-  Timestamp received_at = 5;
-  // The nonce used to encrypt this message
-  bytes nonce = 6;
-  // The public key used by the sender of this message
-  bytes public_key = 7;
   // Public display of affection for this message
-  string pda = 8;
+  string pda = 5;
+  // The time the message was received by the server.
+  Timestamp received_at = 6;
+  // The nonce used to encrypt this message
+  bytes nonce = 7;
+  // The public key used by the sender of this message
+  bytes sender_public_key = 8;
+  // The recipient's public key used to encrypt the message
+  bytes recipient_public_key = 9;
 }
 
 message GetMessagesRequest {
