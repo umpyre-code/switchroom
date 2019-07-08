@@ -14,7 +14,6 @@ extern crate lazy_static;
 extern crate foundationdb;
 extern crate instrumented;
 extern crate prost;
-extern crate sodiumoxide;
 extern crate switchroom_grpc;
 extern crate toml;
 extern crate url;

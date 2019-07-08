@@ -273,9 +273,9 @@ impl DB {
 #[cfg(test)]
 mod tests {
     extern crate rand;
+    use crate::messages::Timestamped;
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-    use crate::messages::Hashable;
 
     lazy_static! {
         static ref TEST_DB: DB = { DB::new(1) };
@@ -291,7 +291,7 @@ mod tests {
             thread_rng().fill(&mut arr[..]);
 
             let message = proto::Message {
-                hash: "".into(),
+                hash: "hash".into(),
                 from: format!("from id {}", rand_prefix),
                 to: format!("to id {}", rand_prefix),
                 received_at: Some(proto::Timestamp {
@@ -303,8 +303,12 @@ mod tests {
                 sender_public_key: "1".into(),
                 recipient_public_key: "2".into(),
                 pda: "PDA".into(),
-            }
-            .hashed();
+                sent_at: Some(proto::Timestamp {
+                    seconds: 1,
+                    nanos: 2,
+                }),
+                signature: "signature".into(),
+            };
 
             let future = TEST_DB.insert_message(message.clone());
             let stored_message = future.wait().unwrap();
@@ -329,12 +333,12 @@ mod tests {
         use self::rand::{thread_rng, Rng, RngCore};
         let rand_prefix = thread_rng().next_u64();
 
-        for _ in 0..3 {
+        for n in 0..3 {
             let mut arr = [0u8; 40000];
             thread_rng().fill(&mut arr[..]);
 
             let message = proto::Message {
-                hash: "".into(),
+                hash: format!("hash{}", n).into(),
                 from: format!("from id {}", rand_prefix),
                 to: format!("to id {}", rand_prefix),
                 received_at: Some(proto::Timestamp {
@@ -346,8 +350,12 @@ mod tests {
                 sender_public_key: "1".into(),
                 recipient_public_key: "2".into(),
                 pda: "PDA".into(),
-            }
-            .hashed();
+                sent_at: Some(proto::Timestamp {
+                    seconds: 1,
+                    nanos: 2,
+                }),
+                signature: "signature".into(),
+            };
 
             let future = TEST_DB.insert_message(message.clone());
             let stored_message = future.wait().unwrap();
@@ -373,12 +381,12 @@ mod tests {
         let rand_prefix = thread_rng().next_u64();
         let n = 10;
 
-        for _ in 0..n {
+        for i in 0..n {
             let mut arr = [0u8; 5];
             thread_rng().fill(&mut arr[..]);
 
             let expired_message = proto::Message {
-                hash: format!("hash {} {}", n, rand_prefix).into(),
+                hash: format!("hash A {} {}", i, rand_prefix).into(),
                 from: format!("expired {}", rand_prefix),
                 to: format!("nowhere {}", rand_prefix),
                 received_at: Some(proto::Timestamp {
@@ -390,10 +398,15 @@ mod tests {
                 sender_public_key: "1".into(),
                 recipient_public_key: "2".into(),
                 pda: "PDA".into(),
+                sent_at: Some(proto::Timestamp {
+                    seconds: 1 + n as i64,
+                    nanos: 2,
+                }),
+                signature: "signature".into(),
             };
 
             let not_expired_message = proto::Message {
-                hash: "".into(),
+                hash: format!("hash B {} {}", i, rand_prefix).into(),
                 from: format!("not expired {}", rand_prefix),
                 to: format!("nowhere {}", rand_prefix),
                 received_at: None,
@@ -402,8 +415,13 @@ mod tests {
                 sender_public_key: "1".into(),
                 recipient_public_key: "2".into(),
                 pda: "PDA".into(),
+                sent_at: Some(proto::Timestamp {
+                    seconds: 1 + n as i64,
+                    nanos: 2,
+                }),
+                signature: "signature".into(),
             }
-            .hashed();
+            .timestamped();
 
             let future = TEST_DB.insert_message(expired_message.clone());
             let stored_message = future.wait().unwrap();
@@ -425,6 +443,7 @@ mod tests {
         let result = future.wait();
 
         assert_eq!(result.is_ok(), true);
-        assert_eq!(result.unwrap().len(), n);
+        let result = result.unwrap();
+        assert_eq!(result.len(), n);
     }
 }

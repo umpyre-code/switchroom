@@ -1,50 +1,18 @@
 use prost::Message;
 use switchroom_grpc::proto;
 
-pub trait Hashable {
-    fn hashed(&self) -> Self;
-    fn verify(&self) -> Result<(), ()>;
+pub trait Timestamped {
+    fn timestamped(&self) -> Self;
 }
 
-impl Hashable for proto::Message {
-    fn hashed(&self) -> Self {
+impl Timestamped for proto::Message {
+    fn timestamped(&self) -> Self {
         // copy fields from incoming message into new message, and update timestamp
-        let mut hash_message = proto::Message {
+        proto::Message {
             received_at: Some(get_timestamp()),
-            hash: b"".to_vec(),
             ..self.clone()
-        };
-        // compute the hash
-        let hash = b2b_hash(&hash_message, 16);
-        // put hash into message
-        hash_message.hash = hash;
-        hash_message
-    }
-
-    fn verify(&self) -> Result<(), ()> {
-        // copy fields from incoming message into new message, and update timestamp
-        let hash_message = proto::Message {
-            hash: b"".to_vec(),
-            ..self.clone()
-        };
-        // compute the hash
-        let hash = b2b_hash(&hash_message, 16);
-        if hash == self.hash {
-            Ok(())
-        } else {
-            Err(())
         }
     }
-}
-
-fn b2b_hash(message: &proto::Message, digest_size: usize) -> Vec<u8> {
-    use sodiumoxide::crypto::generichash;
-    let mut hasher = generichash::State::new(digest_size, None).unwrap();
-    let mut buf = Vec::new();
-    message.encode(&mut buf).unwrap();
-    hasher.update(&buf).unwrap();
-    let digest = hasher.finalize().unwrap();
-    digest.as_ref().to_vec()
 }
 
 fn get_timestamp() -> proto::Timestamp {
@@ -78,12 +46,12 @@ mod tests {
             sender_public_key: "1".into(),
             recipient_public_key: "2".into(),
             pda: "PDA".into(),
+            sent_at: Some(proto::Timestamp {
+                seconds: 1,
+                nanos: 2,
+            }),
+            signature: "signature".into(),
         };
-        let hash = b2b_hash(&message, 16);
-        assert_eq!(
-            hash,
-            vec![148, 44, 62, 197, 93, 210, 223, 152, 205, 88, 92, 237, 234, 34, 17, 6]
-        );
     }
 
     #[test]
@@ -101,8 +69,13 @@ mod tests {
             sender_public_key: "1".into(),
             recipient_public_key: "2".into(),
             pda: "PDA".into(),
+            sent_at: Some(proto::Timestamp {
+                seconds: 1,
+                nanos: 2,
+            }),
+            signature: "signature".into(),
         };
-        let new_message = message.hashed();
+        let new_message = message.timestamped();
         assert_eq!(new_message.from, "from id");
         assert_eq!(new_message.to, "to id");
         assert_eq!(new_message.body, b"yoyoyoyo");
@@ -123,15 +96,15 @@ mod tests {
             sender_public_key: "1".into(),
             recipient_public_key: "2".into(),
             pda: "PDA".into(),
+            sent_at: Some(proto::Timestamp {
+                seconds: 1,
+                nanos: 2,
+            }),
+            signature: "signature".into(),
         };
-        let new_message = message.hashed();
+        let new_message = message.timestamped();
         assert_eq!(new_message.from, "from id");
         assert_eq!(new_message.to, "to id");
         assert_eq!(new_message.body, b"yoyoyoyo");
-        let verified = new_message.verify();
-        assert_eq!(verified.is_ok(), true);
-
-        let not_verified = message.verify();
-        assert_eq!(not_verified.is_err(), true);
     }
 }

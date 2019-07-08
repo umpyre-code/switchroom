@@ -6,7 +6,6 @@ extern crate chrono;
 extern crate foundationdb;
 extern crate instrumented;
 extern crate prost;
-extern crate sodiumoxide;
 extern crate switchroom;
 extern crate switchroom_grpc;
 extern crate tokio;

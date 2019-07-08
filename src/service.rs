@@ -40,9 +40,9 @@ impl Switchroom {
         &self,
         message: &proto::Message,
     ) -> Result<proto::Message, RequestError> {
-        use crate::messages::Hashable;
+        use crate::messages::Timestamped;
         use futures::Future;
-        let message = self.storage.insert_message(message.hashed()).wait()?;
+        let message = self.storage.insert_message(message.timestamped()).wait()?;
         Ok(message)
     }
 
