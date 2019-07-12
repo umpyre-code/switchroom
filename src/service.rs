@@ -11,8 +11,8 @@ use switchroom_grpc::tower_grpc::{Request, Response};
 enum RequestError {
     #[fail(display = "resource could not be found")]
     NotFound,
-    #[fail(display = "Bad arguments specified for request")]
-    BadArguments,
+    #[fail(display = "Bad arguments specified for request: {:?}", err)]
+    BadArguments { err: String },
     #[fail(display = "Storage error: {:?}", err)]
     StorageError { err: String },
 }
@@ -20,6 +20,14 @@ enum RequestError {
 impl From<storage::StorageError> for RequestError {
     fn from(err: storage::StorageError) -> RequestError {
         RequestError::StorageError {
+            err: err.to_string(),
+        }
+    }
+}
+
+impl From<data_encoding::DecodeError> for RequestError {
+    fn from(err: data_encoding::DecodeError) -> RequestError {
+        RequestError::BadArguments {
             err: err.to_string(),
         }
     }
@@ -51,10 +59,29 @@ impl Switchroom {
         &self,
         request: &proto::GetMessagesRequest,
     ) -> Result<proto::GetMessagesResponse, RequestError> {
+        use crate::bloom_filter::BloomFilter;
+        use data_encoding::BASE64_NOPAD;
         use futures::Future;
-        // The sketch is currently unused (not implemented)
+
         let messages = self.storage.get_messages_for(&request.client_id).wait()?;
-        Ok(proto::GetMessagesResponse { messages })
+        if request.sketch.is_empty() {
+            // If the sketch is empty, return the full set of messages
+            Ok(proto::GetMessagesResponse { messages })
+        } else {
+            // If a sketch was provided, filter out messages that are present in the bloom filter
+            let filter_slice: Vec<u8> = BASE64_NOPAD.decode(request.sketch.as_bytes())?;
+            let bf = BloomFilter::from_slice(&filter_slice);
+            Ok(proto::GetMessagesResponse {
+                messages: messages
+                    .iter()
+                    .filter(|message| {
+                        let hash = BASE64_NOPAD.encode(&message.hash);
+                        !bf.test(&hash)
+                    })
+                    .cloned()
+                    .collect(),
+            })
+        }
     }
 }
 

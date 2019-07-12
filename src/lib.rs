@@ -1,3 +1,4 @@
+extern crate data_encoding;
 extern crate env_logger;
 extern crate futures;
 #[macro_use]
@@ -19,6 +20,7 @@ extern crate toml;
 extern crate url;
 extern crate yansi;
 
+pub mod bloom_filter;
 pub mod config;
 pub mod messages;
 pub mod metrics;

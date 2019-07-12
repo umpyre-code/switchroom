@@ -5,6 +5,7 @@ authors = ["Brenden Matthews <brenden@brndn.io>"]
 
 [dependencies]
 chrono = "0.4"
+data-encoding = "2"
 env_logger = { version = "0.6", default-features = false }
 failure = "0.1"
 foundationdb = { git = "https://github.com/brndnmtthws/foundationdb-rs" }
