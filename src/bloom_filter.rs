@@ -289,7 +289,7 @@ mod tests {
         let mut bf = BloomFilter::new();
 
         present
-            .iter() 
+            .iter()
             .for_each(|value| bf.add(&format!("{}", value)));
 
         present
