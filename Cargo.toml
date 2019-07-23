@@ -22,7 +22,7 @@ switchroom-grpc = { path = "lib" }
 tokio = "0.1"
 toml = "0.5"
 tower-hyper = "0.1"
-tower-request-modifier = { git = "https://github.com/tower-rs/tower-http" }
+tower-request-modifier = "0.1"
 tower-service = "0.2"
 tower-util = "0.1"
 url = "2"
