@@ -308,6 +308,7 @@ mod tests {
                     nanos: 2,
                 }),
                 signature: "signature".into(),
+                value_cents: 0,
             };
 
             let future = TEST_DB.insert_message(message.clone());
@@ -355,6 +356,7 @@ mod tests {
                     nanos: 2,
                 }),
                 signature: "signature".into(),
+                value_cents: 0,
             };
 
             let future = TEST_DB.insert_message(message.clone());
@@ -403,6 +405,7 @@ mod tests {
                     nanos: 2,
                 }),
                 signature: "signature".into(),
+                value_cents: 0,
             };
 
             let not_expired_message = proto::Message {
@@ -420,6 +423,7 @@ mod tests {
                     nanos: 2,
                 }),
                 signature: "signature".into(),
+                value_cents: 0,
             }
             .timestamped();
 

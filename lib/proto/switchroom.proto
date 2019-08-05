@@ -57,6 +57,8 @@ message Message {
   // sender_public_key, recipient_public_key, and sent_at fields are used to
   // compute the signature.
   bytes signature = 11;
+  // The value of this message in cents.
+  int32 value_cents = 12;
 }
 
 message GetMessagesRequest {

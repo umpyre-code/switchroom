@@ -51,6 +51,7 @@ mod tests {
                 nanos: 2,
             }),
             signature: "signature".into(),
+            value_cents: 0,
         };
     }
 
@@ -74,6 +75,7 @@ mod tests {
                 nanos: 2,
             }),
             signature: "signature".into(),
+            value_cents: 0,
         };
         let new_message = message.timestamped();
         assert_eq!(new_message.from, "from id");
@@ -101,6 +103,7 @@ mod tests {
                 nanos: 2,
             }),
             signature: "signature".into(),
+            value_cents: 0,
         };
         let new_message = message.timestamped();
         assert_eq!(new_message.from, "from id");
