@@ -44,7 +44,7 @@ curl -sL ${FDB_BASE_URL}/ubuntu/installers/foundationdb-clients_${FDB_VERSION2}_
 # Add libclang1 for FDB client, and dig for coordinator IP lookup
 apt-get update -qq
 apt-get install -qqy libclang1 dnsutils
-dpkg -i /foundationdb-clients.deb
+dpkg -i foundationdb-clients.deb
 rm foundationdb-clients.deb
 
 
