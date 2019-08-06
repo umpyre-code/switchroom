@@ -37,11 +37,12 @@ sccache -s
 
 # Install foundationdb client library
 export FDB_VERSION=6.1.8
-export FDB_VERSION2=${VERSION}-1
+export FDB_VERSION2=${FDB_VERSION}-1
 export FDB_BASE_URL=https://www.foundationdb.org/downloads/${FDB_VERSION}
 
 curl -sL ${FDB_BASE_URL}/ubuntu/installers/foundationdb-clients_${FDB_VERSION2}_amd64.deb > foundationdb-clients.deb
 # Add libclang1 for FDB client, and dig for coordinator IP lookup
+apt-get update -qq
 apt-get install -qqy libclang1 dnsutils
 dpkg -i /foundationdb-clients.deb
 rm foundationdb-clients.deb
