@@ -31,6 +31,8 @@
 use std::num::Wrapping;
 
 // http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+// This is used to determine cardinality (i.e., estimate the number of items in
+// the bloom filter), but it's currently not used.
 fn popcnt(value: u32) -> u32 {
     let value = value - ((value >> 1) & 0x55555555);
     let value = (value & 0x33333333) + ((value >> 2) & 0x33333333);

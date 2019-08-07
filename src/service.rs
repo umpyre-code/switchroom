@@ -2,7 +2,7 @@ use crate::metrics;
 use crate::storage;
 
 use futures::future;
-use instrumented::instrument;
+use instrumented::{instrument, prometheus, register};
 use std::sync::Arc;
 use switchroom_grpc::proto;
 use switchroom_grpc::tower_grpc::{Request, Response};
@@ -33,6 +33,28 @@ impl From<data_encoding::DecodeError> for RequestError {
     }
 }
 
+lazy_static! {
+    static ref MESSAGE_VALUE_COUNTER: prometheus::IntCounterVec = {
+        let counter_opts = prometheus::Opts::new(
+            "message_value_counter",
+            "Counter message values observed in cents",
+        );
+        let counter = prometheus::IntCounterVec::new(counter_opts, &[]).unwrap();
+        register(Box::new(counter.clone())).unwrap();
+        counter
+    };
+    static ref MESSAGE_VALUE_HISTO: prometheus::HistogramVec = {
+        let histogram_opts = prometheus::HistogramOpts::new(
+            "message_value_histogram",
+            "Histogram of message values observed in cents",
+        );
+        let histogram = prometheus::HistogramVec::new(histogram_opts, &[]).unwrap();
+
+        register(Box::new(histogram.clone())).unwrap();
+
+        histogram
+    };
+}
 #[derive(Clone)]
 pub struct Switchroom {
     storage: Arc<storage::DB>,
@@ -51,6 +73,14 @@ impl Switchroom {
         use crate::messages::Timestamped;
         use futures::Future;
         let message = self.storage.insert_message(message.timestamped()).wait()?;
+
+        MESSAGE_VALUE_HISTO
+            .with_label_values(&[])
+            .observe(f64::from(message.value_cents));
+        MESSAGE_VALUE_COUNTER
+            .with_label_values(&[])
+            .inc_by(i64::from(message.value_cents));
+
         Ok(message)
     }
 
