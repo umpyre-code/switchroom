@@ -60,7 +60,7 @@ impl Switchroom {
         request: &proto::GetMessagesRequest,
     ) -> Result<proto::GetMessagesResponse, RequestError> {
         use crate::bloom_filter::BloomFilter;
-        use data_encoding::BASE64_NOPAD;
+        use data_encoding::BASE64URL_NOPAD;
         use futures::Future;
 
         let messages = self.storage.get_messages_for(&request.client_id).wait()?;
@@ -69,13 +69,13 @@ impl Switchroom {
             Ok(proto::GetMessagesResponse { messages })
         } else {
             // If a sketch was provided, filter out messages that are present in the bloom filter
-            let filter_slice: Vec<u8> = BASE64_NOPAD.decode(request.sketch.as_bytes())?;
+            let filter_slice: Vec<u8> = BASE64URL_NOPAD.decode(request.sketch.as_bytes())?;
             let bf = BloomFilter::from_slice(&filter_slice);
             Ok(proto::GetMessagesResponse {
                 messages: messages
                     .iter()
                     .filter(|message| {
-                        let hash = BASE64_NOPAD.encode(&message.hash);
+                        let hash = BASE64URL_NOPAD.encode(&message.hash);
                         !bf.test(&hash)
                     })
                     .cloned()
