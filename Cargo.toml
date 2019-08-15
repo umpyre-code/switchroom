@@ -2,6 +2,7 @@
 name = "switchroom"
 version = "0.1.0"
 authors = ["Brenden Matthews <brenden@brndn.io>"]
+default-run = "switchroom"
 
 [dependencies]
 chrono = "0.4"
