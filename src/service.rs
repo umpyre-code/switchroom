@@ -36,7 +36,7 @@ impl From<data_encoding::DecodeError> for RequestError {
 lazy_static! {
     static ref MESSAGE_VALUE_COUNTER: prometheus::IntCounterVec = {
         let counter_opts = prometheus::Opts::new(
-            "message_value_counter",
+            "message_value_cents_total",
             "Counter message values observed in cents",
         );
         let counter = prometheus::IntCounterVec::new(counter_opts, &[]).unwrap();
@@ -45,7 +45,7 @@ lazy_static! {
     };
     static ref MESSAGE_VALUE_HISTO: prometheus::HistogramVec = {
         let histogram_opts = prometheus::HistogramOpts::new(
-            "message_value_histogram",
+            "message_value_cents_histo",
             "Histogram of message values observed in cents",
         );
         let histogram = prometheus::HistogramVec::new(histogram_opts, &[]).unwrap();
