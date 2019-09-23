@@ -65,7 +65,7 @@ impl Switchroom {
         Switchroom { storage }
     }
 
-    #[instrument(INFO)]
+    #[instrument(DEBUG)]
     fn handle_send_message(
         &self,
         message: &proto::Message,
@@ -84,7 +84,7 @@ impl Switchroom {
         Ok(message)
     }
 
-    #[instrument(INFO)]
+    #[instrument(DEBUG)]
     fn handle_get_messages(
         &self,
         request: &proto::GetMessagesRequest,
