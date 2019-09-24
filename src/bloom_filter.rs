@@ -86,8 +86,8 @@ impl BloomFilter {
     // each element is a 32-bit integer.  Otherwise, *m* should specify the
     // number of bits.  Note that *m* is rounded up to the nearest multiple of
     // 32.  *k* specifies the number of hashing functions.
-    pub fn new() -> Self {
-        let m = 8 * 1024;
+    pub fn new(length: usize) -> Self {
+        let m = 8 * length;
         let n: usize = m / 8;
         let k: u32 = 8;
         let m: u32 = (n as u32) * 8;
@@ -97,7 +97,7 @@ impl BloomFilter {
     }
 
     pub fn from_slice(slice: &[u8]) -> Self {
-        let mut bf = Self::new();
+        let mut bf = Self::new(slice.len());
         bf.buckets.clone_from_slice(slice);
         bf
     }
