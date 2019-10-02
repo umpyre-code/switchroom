@@ -93,24 +93,25 @@ impl Switchroom {
         use data_encoding::BASE64URL_NOPAD;
         use futures::Future;
 
-        let messages = self.storage.get_messages_for(&request.client_id).wait()?;
         if request.sketch.is_empty() {
             // If the sketch is empty, return the full set of messages
+            let messages = self
+                .storage
+                .get_messages_for(&request.client_id, |_| true)
+                .wait()?;
             Ok(proto::GetMessagesResponse { messages })
         } else {
             // If a sketch was provided, filter out messages that are present in the bloom filter
             let filter_slice: Vec<u8> = BASE64URL_NOPAD.decode(request.sketch.as_bytes())?;
             let bf = BloomFilter::from_slice(&filter_slice);
-            Ok(proto::GetMessagesResponse {
-                messages: messages
-                    .iter()
-                    .filter(|message| {
-                        let hash = BASE64URL_NOPAD.encode(&message.hash);
-                        !bf.test(&hash)
-                    })
-                    .cloned()
-                    .collect(),
-            })
+            let messages = self
+                .storage
+                .get_messages_for(&request.client_id, move |hash| {
+                    let hash = BASE64URL_NOPAD.encode(hash);
+                    !bf.test(&hash)
+                })
+                .wait()?;
+            Ok(proto::GetMessagesResponse { messages })
         }
     }
 }

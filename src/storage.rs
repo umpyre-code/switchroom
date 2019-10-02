@@ -167,10 +167,14 @@ impl DB {
         })
     }
 
-    pub fn get_messages_for(
+    pub fn get_messages_for<F>(
         &self,
         client_id: &str,
-    ) -> Box<dyn Future<Item = Vec<proto::Message>, Error = StorageError>> {
+        filterFn: F,
+    ) -> Box<dyn Future<Item = Vec<proto::Message>, Error = StorageError>>
+    where
+        F: Fn(&[u8]) -> bool + 'static,
+    {
         use chrono::prelude::*;
         use foundationdb::transaction::RangeOptionBuilder;
         use futures::{stream, Stream};
@@ -195,37 +199,44 @@ impl DB {
                     for kv in kvs.as_ref() {
                         let result: Result<BlobKey> = Decode::try_from(kv.key());
                         match result {
-                            Ok((_prefix, _client_id, _hash, _n)) => {
-                                match proto::BlobValue::decode(kv.value()) {
-                                    Ok(mut blob_value) => {
-                                        buf.append(&mut blob_value.payload);
-                                        if buf.len() == blob_value.blob_length as usize {
-                                            match proto::Message::decode(&buf) {
-                                                Ok(message) => {
-                                                    let timestamp = message
-                                                        .received_at
-                                                        .as_ref()
-                                                        .expect("Couldn't get timestamp");
-                                                    let received_at = DateTime::<Utc>::from_utc(
-                                                        NaiveDateTime::from_timestamp(
-                                                            timestamp.seconds,
-                                                            timestamp.nanos as u32,
-                                                        ),
-                                                        Utc,
-                                                    );
-                                                    if received_at > expiry_time {
-                                                        messages.push(message);
+                            Ok((_prefix, _client_id, hash, _n)) => {
+                                if filterFn(&hash) {
+                                    match proto::BlobValue::decode(kv.value()) {
+                                        Ok(mut blob_value) => {
+                                            buf.append(&mut blob_value.payload);
+                                            if buf.len() == blob_value.blob_length as usize {
+                                                match proto::Message::decode(&buf) {
+                                                    Ok(message) => {
+                                                        let timestamp = message
+                                                            .received_at
+                                                            .as_ref()
+                                                            .expect("Couldn't get timestamp");
+                                                        let received_at = DateTime::<Utc>::from_utc(
+                                                            NaiveDateTime::from_timestamp(
+                                                                timestamp.seconds,
+                                                                timestamp.nanos as u32,
+                                                            ),
+                                                            Utc,
+                                                        );
+                                                        if received_at > expiry_time {
+                                                            messages.push(message);
+                                                        }
+                                                    }
+                                                    Err(err) => {
+                                                        error!(
+                                                            "failed to decode message: {:?}",
+                                                            err
+                                                        );
+                                                        metrics::MESSAGE_DECODE_FAILURE.inc();
                                                     }
                                                 }
-                                                Err(err) => {
-                                                    error!("failed to decode message: {:?}", err);
-                                                    metrics::MESSAGE_DECODE_FAILURE.inc();
-                                                }
+                                                buf.clear();
                                             }
-                                            buf.clear();
+                                        }
+                                        Err(err) => {
+                                            error!("failed to decode blob value: {:?}", err)
                                         }
                                     }
-                                    Err(err) => error!("failed to decode blob value: {:?}", err),
                                 }
                             }
                             Err(err) => error!("failed to decode blob key: {:?}", err),
