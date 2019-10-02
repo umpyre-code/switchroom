@@ -171,9 +171,12 @@ impl DB {
         &self,
         client_id: &str,
     ) -> Box<dyn Future<Item = Vec<proto::Message>, Error = StorageError>> {
+        use chrono::prelude::*;
         use foundationdb::transaction::RangeOptionBuilder;
         use futures::{stream, Stream};
         use prost::Message;
+
+        let expiry_time = Utc::now() - chrono::Duration::days(self.expiry_days);
 
         let range = RangeOptionBuilder::from(("M", client_id)).build();
 
@@ -199,7 +202,20 @@ impl DB {
                                         if buf.len() == blob_value.blob_length as usize {
                                             match proto::Message::decode(&buf) {
                                                 Ok(message) => {
-                                                    messages.push(message);
+                                                    let timestamp = message
+                                                        .received_at
+                                                        .as_ref()
+                                                        .expect("Couldn't get timestamp");
+                                                    let received_at = DateTime::<Utc>::from_utc(
+                                                        NaiveDateTime::from_timestamp(
+                                                            timestamp.seconds,
+                                                            timestamp.nanos as u32,
+                                                        ),
+                                                        Utc,
+                                                    );
+                                                    if received_at > expiry_time {
+                                                        messages.push(message);
+                                                    }
                                                 }
                                                 Err(err) => {
                                                     error!("failed to decode message: {:?}", err);
@@ -230,6 +246,8 @@ impl DB {
         use foundationdb::keyselector::KeySelector;
         use foundationdb::transaction::RangeOptionBuilder;
         use futures::Stream;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         let expiry_date = (Utc::now() - chrono::Duration::days(self.expiry_days)).date();
         let expiry = to_integer_date(expiry_date);
@@ -239,7 +257,12 @@ impl DB {
 
         let range = RangeOptionBuilder::new(start.clone(), end.clone()).build();
 
-        self.db.transact(move |trx| {
+        let count = Arc::new(AtomicUsize::new(0));
+        let count_inner = count.clone();
+
+        info!("Looking for expired keys");
+
+        let result = self.db.transact(move |trx| {
             let range = range.clone();
             trx.get_ranges(range)
                 .map_err(StorageError::from)
@@ -252,6 +275,7 @@ impl DB {
                                 let (_prefix, _expiry, client_id, hash) = t;
                                 // Clear this message
                                 trx.clear_subspace_range(Subspace::from(("M", client_id, hash)));
+                                count_inner.fetch_add(1, Ordering::SeqCst);
                             }
                             Err(err) => {
                                 error!("error decoding key: {:?}", err);
@@ -266,7 +290,11 @@ impl DB {
             trx.clear_range(start.key(), end.key());
 
             Ok(())
-        })
+        });
+
+        info!("Cleared {} expired keys", count.load(Ordering::SeqCst));
+
+        result
     }
 }
 
