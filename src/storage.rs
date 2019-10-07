@@ -61,6 +61,7 @@ pub struct DB {
 }
 
 const CHUNK_SIZE: usize = 10_000;
+const RESPONSE_SIZE_LIMIT: i64 = 10_485_760;
 
 type BlobKey = (String, String, Vec<u8>, i64);
 type ExpKey = (String, i64, String, Vec<u8>);
@@ -179,10 +180,14 @@ impl DB {
         use foundationdb::transaction::RangeOptionBuilder;
         use futures::{stream, Stream};
         use prost::Message;
+        use std::sync::atomic::{AtomicI64, Ordering};
+        use std::sync::Arc;
 
         let expiry_time = Utc::now() - chrono::Duration::days(self.expiry_days);
 
         let range = RangeOptionBuilder::from(("M", client_id)).build();
+
+        let message_bytes = Arc::new(AtomicI64::new(0));
 
         self.db.transact(move |trx| {
             let range = range.clone();
@@ -203,6 +208,19 @@ impl DB {
                                 if filterFn(&hash) {
                                     match proto::BlobValue::decode(kv.value()) {
                                         Ok(mut blob_value) => {
+                                            // check if we've hit size limit, if so, break out of loop
+                                            let bytes = message_bytes.load(Ordering::SeqCst);
+                                            if bytes > 0
+                                                && blob_value.blob_length + bytes
+                                                    > RESPONSE_SIZE_LIMIT
+                                            {
+                                                return stream::iter_ok::<
+                                                    Vec<proto::Message>,
+                                                    StorageError,
+                                                >(
+                                                    messages
+                                                );
+                                            }
                                             buf.append(&mut blob_value.payload);
                                             if buf.len() == blob_value.blob_length as usize {
                                                 match proto::Message::decode(&buf) {
@@ -219,16 +237,11 @@ impl DB {
                                                             Utc,
                                                         );
                                                         if received_at > expiry_time {
-                                                            messages.push(message);
-                                                        }
-                                                        if messages.len() >= 25 {
-                                                            // break out if we have >=25 messages
-                                                            return stream::iter_ok::<
-                                                                Vec<proto::Message>,
-                                                                StorageError,
-                                                            >(
-                                                                messages
+                                                            message_bytes.fetch_add(
+                                                                blob_value.blob_length,
+                                                                Ordering::SeqCst,
                                                             );
+                                                            messages.push(message);
                                                         }
                                                     }
                                                     Err(err) => {
