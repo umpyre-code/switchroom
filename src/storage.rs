@@ -221,6 +221,15 @@ impl DB {
                                                         if received_at > expiry_time {
                                                             messages.push(message);
                                                         }
+                                                        if messages.len() >= 25 {
+                                                            // break out if we have >=25 messages
+                                                            return stream::iter_ok::<
+                                                                Vec<proto::Message>,
+                                                                StorageError,
+                                                            >(
+                                                                messages
+                                                            );
+                                                        }
                                                     }
                                                     Err(err) => {
                                                         error!(
