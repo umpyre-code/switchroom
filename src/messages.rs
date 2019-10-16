@@ -1,4 +1,3 @@
-use prost::Message;
 use switchroom_grpc::proto;
 
 pub trait Timestamped {
@@ -45,7 +44,6 @@ mod tests {
             nonce: "nonce".into(),
             sender_public_key: "1".into(),
             recipient_public_key: "2".into(),
-            pda: "PDA".into(),
             sent_at: Some(proto::Timestamp {
                 seconds: 1,
                 nanos: 2,
@@ -69,7 +67,6 @@ mod tests {
             nonce: "".into(),
             sender_public_key: "1".into(),
             recipient_public_key: "2".into(),
-            pda: "PDA".into(),
             sent_at: Some(proto::Timestamp {
                 seconds: 1,
                 nanos: 2,
@@ -97,7 +94,6 @@ mod tests {
             nonce: "".into(),
             sender_public_key: "1".into(),
             recipient_public_key: "2".into(),
-            pda: "PDA".into(),
             sent_at: Some(proto::Timestamp {
                 seconds: 1,
                 nanos: 2,

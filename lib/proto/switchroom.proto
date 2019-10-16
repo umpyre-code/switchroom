@@ -66,6 +66,8 @@ message GetMessagesRequest {
   // A sketch (serialized bloom filter) of the messages to skip (i.e., don't
   // return messages in this sketch).
   string sketch = 2;
+  // A salt to be prepended to BF values
+  string salt = 3;
 }
 message GetMessagesResponse { repeated Message messages = 1; }
 

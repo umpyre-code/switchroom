@@ -103,7 +103,7 @@ impl Switchroom {
         } else {
             // If a sketch was provided, filter out messages that are present in the bloom filter
             let filter_slice: Vec<u8> = BASE64URL_NOPAD.decode(request.sketch.as_bytes())?;
-            let bf = BloomFilter::from_slice(&filter_slice);
+            let bf = BloomFilter::from_slice(&filter_slice, request.salt.as_ref());
             let messages = self
                 .storage
                 .get_messages_for(&request.client_id, move |hash| {

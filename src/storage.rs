@@ -375,7 +375,7 @@ mod tests {
             let stored_message = future.wait().unwrap();
             assert_eq!(message, stored_message);
 
-            let future = TEST_DB.get_messages_for(&format!("from id {}", rand_prefix));
+            let future = TEST_DB.get_messages_for(&format!("from id {}", rand_prefix), |_| true);
             let result = future.wait();
 
             assert_eq!(result.is_ok(), true);
@@ -422,7 +422,7 @@ mod tests {
             let stored_message = future.wait().unwrap();
             assert_eq!(message, stored_message);
 
-            let future = TEST_DB.get_messages_for(&format!("from id {}", rand_prefix));
+            let future = TEST_DB.get_messages_for(&format!("from id {}", rand_prefix), |_| true);
             let result = future.wait();
 
             assert_eq!(result.is_ok(), true);
@@ -494,13 +494,13 @@ mod tests {
 
         TEST_DB.clear_expired().wait().unwrap();
 
-        let future = TEST_DB.get_messages_for(&format!("expired {}", rand_prefix));
+        let future = TEST_DB.get_messages_for(&format!("expired {}", rand_prefix), |_| true);
         let result = future.wait();
 
         assert_eq!(result.is_ok(), true);
         assert_eq!(result.unwrap().len(), 0);
 
-        let future = TEST_DB.get_messages_for(&format!("not expired {}", rand_prefix));
+        let future = TEST_DB.get_messages_for(&format!("not expired {}", rand_prefix), |_| true);
         let result = future.wait();
 
         assert_eq!(result.is_ok(), true);

@@ -78,6 +78,7 @@ pub struct BloomFilter {
     m: u32,
     k: u32,
     buckets: Vec<u8>,
+    salt: String,
 }
 
 impl BloomFilter {
@@ -86,18 +87,23 @@ impl BloomFilter {
     // each element is a 32-bit integer.  Otherwise, *m* should specify the
     // number of bits.  Note that *m* is rounded up to the nearest multiple of
     // 32.  *k* specifies the number of hashing functions.
-    pub fn new(length: usize) -> Self {
+    pub fn new(length: usize, salt: &str) -> Self {
         let m = 8 * length;
         let n: usize = m / 8;
         let k: u32 = 8;
         let m: u32 = (n as u32) * 8;
         let buckets = vec![0u8; n];
 
-        Self { m, k, buckets }
+        Self {
+            m,
+            k,
+            buckets,
+            salt: salt.into(),
+        }
     }
 
-    pub fn from_slice(slice: &[u8]) -> Self {
-        let mut bf = Self::new(slice.len());
+    pub fn from_slice(slice: &[u8], salt: &str) -> Self {
+        let mut bf = Self::new(slice.len(), salt);
         bf.buckets.clone_from_slice(slice);
         bf
     }
@@ -105,7 +111,7 @@ impl BloomFilter {
     // See http://willwhim.wpengine.com/2011/09/03/producing-n-hash-functions-by-hashing-only-once/
     fn locations(&self, value: &str) -> Vec<u16> {
         let mut locations_buffer = vec![0u16; self.k as usize];
-        let a = fnv_1a(value, None);
+        let a = fnv_1a(&format!("{}{}", &self.salt, value), None);
         let b = fnv_1a(value, Some(872958581)); // The seed value is chosen randomly
         let mut x = a % self.m;
         for i in 0..self.k {
@@ -263,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_bloomfilter_present() {
-        let mut bf = BloomFilter::new();
+        let mut bf = BloomFilter::new(1024, "salt");
         bf.add("hello");
         bf.add("Bob");
 
@@ -273,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_bloomfilter_not_present() {
-        let bf = BloomFilter::new();
+        let bf = BloomFilter::new(1024, "salt");
 
         assert_eq!(bf.test("hello"), false);
         assert_eq!(bf.test("Bob"), false);
@@ -288,7 +294,7 @@ mod tests {
             not_present.push(i + 10000);
         }
 
-        let mut bf = BloomFilter::new();
+        let mut bf = BloomFilter::new(1024, "salt");
 
         present
             .iter()
@@ -307,7 +313,7 @@ mod tests {
         use self::data_encoding::BASE64URL_NOPAD;
         let b64_filter = "AAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAQAAAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAgAAAAAIQAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAABAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAgAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAIAAAAAIAAAAAAAAAEAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAgAAAAAAAIAAAAAAAAAAAAAgAAAQAAAAAAAAAAAAAAAACAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAgAAAAAAAAAACAAAAAAAAEAAAAAAAAQAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAACAAAAAAAAAAAAAgAAAAAAAAABAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAIAAIAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAACAAAAAAAAAEAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAACAIAAAAAA";
         let filter_slice: Vec<u8> = BASE64URL_NOPAD.decode(b64_filter.as_bytes()).unwrap();
-        let bf = BloomFilter::from_slice(&filter_slice);
+        let bf = BloomFilter::from_slice(&filter_slice, "");
 
         assert_eq!(bf.test("1/fT/HwFDKYio/n/ZzxTXHpy8U0vzogzJhv+gculEhI"), true);
         assert_eq!(bf.test("5Y6kvOWSehVNYBbkFkWjvcyEV584Hr61oN5z5ZDhKsI"), true);
