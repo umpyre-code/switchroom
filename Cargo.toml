@@ -12,7 +12,7 @@ env_logger = { version = "0.7", default-features = false }
 failure = "0.1"
 foundationdb = { git = "https://github.com/brndnmtthws/foundationdb-rs" }
 futures = "0.1"
-http = "0.1"
+http = "0.2"
 hyper = "0.12"
 instrumented = "0.1"
 lazy_static = "1.3"
